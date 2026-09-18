@@ -148,6 +148,41 @@ describe("current cron delivery origin", () => {
     },
   );
 
+  it("uses a recovered source route when the configured primary store is absent", async () => {
+    await withCurrentOrigin(
+      { source: { channel: "telegram", to: "recipient", accountId: "work", threadId: "topic" } },
+      async ({ cfg, job }) => {
+        const primaryPath = path.join(path.dirname(cfg.session!.store!), "absent-primary.sqlite");
+        cfg.session = { store: primaryPath };
+        expect(fs.existsSync(primaryPath)).toBe(false);
+
+        await expect(
+          resolveDeliveryTarget(cfg, "main", {
+            channel: "last",
+            sessionKey: job.sessionKey,
+            sessionTarget: job.sessionTarget,
+          }),
+        ).resolves.toMatchObject({
+          ok: true,
+          channel: "telegram",
+          to: "recipient",
+          accountId: "work",
+          threadId: "topic",
+          mode: "implicit",
+        });
+        const expected = {
+          label: "announce -> telegram:recipient",
+          detail: `resolved from last, session ${job.sessionKey}`,
+        };
+        expect(await resolveCronDeliveryPreview({ cfg, job })).toEqual(expected);
+        expect(await resolveCronDeliveryPreviews({ cfg, jobs: [job] })).toEqual({
+          [job.id]: expected,
+        });
+        expect(fs.existsSync(primaryPath)).toBe(false);
+      },
+    );
+  });
+
   it("shares alias reads across a preview batch and refreshes routes on the next request", async () => {
     await withCurrentOrigin({ channelCount: 1 }, async ({ cfg, job }) => {
       const storePath = cfg.session!.store!;

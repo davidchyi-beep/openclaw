@@ -57,8 +57,8 @@ export function readCronDeliveryTargetContexts(
   const readKey = (agentId: string, storePath: string, sessionKey: string) =>
     JSON.stringify([agentId, storePath, sessionKey]);
   const reads = new Map<string, { agentId: string; storePath: string; sessionKey: string }>();
-  for (const item of planned) {
-    if (!item.ok) {
+  for (const [index, item] of planned.entries()) {
+    if (!item.ok || recovered[index]?.deliveryContext) {
       continue;
     }
     const { agentId, storePath, mainSessionKey, threadSessionKey } = item.value;
@@ -112,10 +112,9 @@ export function readCronDeliveryTargetContexts(
         recoveredContext && recoveredInfo?.threadId
           ? { ...recoveredContext, threadId: recoveredInfo.threadId }
           : recoveredContext;
-      const threadEntry = threadSessionKey
-        ? readEntry(agentId, storePath, threadSessionKey)
-        : undefined;
-      const mainEntry = readEntry(agentId, storePath, mainSessionKey);
+      const threadEntry =
+        !context && threadSessionKey ? readEntry(agentId, storePath, threadSessionKey) : undefined;
+      const mainEntry = context ? undefined : readEntry(agentId, storePath, mainSessionKey);
       const selected = threadEntry ?? mainEntry;
       return ok({
         mainSessionKey,

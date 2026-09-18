@@ -18,6 +18,7 @@ import {
   loadExactSessionEntryReadOnly,
   openSessionEntryReadView,
 } from "./session-accessor.js";
+import { SessionMetadataUnavailableError } from "./session-accessor.sqlite-exact-read.js";
 import type { SessionEntryReadSource, SessionEntryReadView } from "./session-accessor.types.js";
 import {
   foldedSessionKeyAliasCandidates,
@@ -397,7 +398,15 @@ function loadDeliverySessionEntry(
       }
     | undefined;
   for (const [storeIndex, storePath] of lookup.storePaths.entries()) {
-    const store = readStore(storePath, storeIndex);
+    let store: DeliveryStoreRead;
+    try {
+      store = readStore(storePath, storeIndex);
+    } catch (error) {
+      if (error instanceof SessionMetadataUnavailableError && error.reason === "database-missing") {
+        continue;
+      }
+      throw error;
+    }
     const entry = findSessionEntryInStore(store, lookup.sessionKeys);
     const baseEntry = findSessionEntryInStore(store, lookup.baseKeys);
     if (!entry && !baseEntry) {
