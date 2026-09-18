@@ -77,6 +77,77 @@ async function withCurrentOrigin(
 }
 
 describe("current cron delivery origin", () => {
+  it.each(["single", "batch"] as const)(
+    "records unavailable metadata in %s previews without suppressing healthy jobs",
+    async (mode) => {
+      await withCurrentOrigin(
+        { source: { channel: "telegram", to: "recipient" } },
+        async ({ job }) => {
+          const cfg: OpenClawConfig = {
+            agents: { entries: { main: {}, missing: {} } },
+          };
+          const missing = makeCronJob({
+            id: "missing-current",
+            agentId: "missing",
+            sessionTarget: "current",
+            sessionKey: "agent:missing:dashboard:current-origin",
+            delivery: { mode: "announce" },
+          });
+          const explicit = {
+            ...missing,
+            id: "missing-explicit",
+            delivery: { mode: "announce", channel: "telegram", to: "explicit-recipient" },
+          } satisfies CronJob;
+          const jobs = [
+            { ...job, id: "healthy" },
+            missing,
+            { ...missing, id: "missing-last", sessionTarget: "isolated" as const },
+            explicit,
+          ];
+          await expect(
+            resolveDeliveryTarget(cfg, "missing", {
+              ...explicit.delivery,
+              sessionKey: explicit.sessionKey,
+              sessionTarget: explicit.sessionTarget,
+            }),
+          ).rejects.toMatchObject({
+            name: "SessionMetadataUnavailableError",
+            reason: "database-missing",
+          });
+
+          const previews =
+            mode === "batch"
+              ? await resolveCronDeliveryPreviews({ cfg, jobs })
+              : Object.fromEntries(
+                  await Promise.all(
+                    jobs.map(async (entry) => [
+                      entry.id,
+                      await resolveCronDeliveryPreview({ cfg, job: entry }),
+                    ]),
+                  ),
+                );
+          const unavailable = {
+            label: "announce -> last",
+            detail:
+              "delivery preview unavailable: Session metadata unavailable (database-missing); retry after the agent store is ready.",
+          };
+          expect(previews).toEqual({
+            healthy: {
+              label: "announce -> telegram:recipient",
+              detail: `resolved from last, session ${job.sessionKey}`,
+            },
+            "missing-current": unavailable,
+            "missing-last": unavailable,
+            "missing-explicit": {
+              ...unavailable,
+              label: "announce -> telegram:explicit-recipient",
+            },
+          });
+        },
+      );
+    },
+  );
+
   it("shares alias reads across a preview batch and refreshes routes on the next request", async () => {
     await withCurrentOrigin({ channelCount: 1 }, async ({ cfg, job }) => {
       const storePath = cfg.session!.store!;

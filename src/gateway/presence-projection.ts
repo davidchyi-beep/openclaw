@@ -1,6 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import type { SessionEntry } from "../config/sessions.js";
+import { SessionMetadataUnavailableError } from "../config/sessions/session-accessor.sqlite-exact-read.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SystemPresence } from "../infra/system-presence.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
@@ -59,6 +60,13 @@ export function createPresenceRecipientProjection(params: {
     // Dormant until an eligible recipient visits a watch; errors retain visitor order.
     const result = expectDefined((targets ??= prepareTargets()).get(sessionKey), "presence target");
     if (!result.ok) {
+      if (
+        result.error instanceof SessionMetadataUnavailableError &&
+        result.error.reason === "database-missing"
+      ) {
+        // A retired or not-yet-created store cannot keep an obsolete watch visible.
+        return undefined;
+      }
       throw result.error;
     }
     return result.value;

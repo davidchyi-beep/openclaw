@@ -209,7 +209,7 @@ export type ExactSessionEntryBatchScope = Omit<SessionEntryReadScope, "sessionKe
   onReadSource?: (source: SessionEntryReadSource) => void;
 };
 
-class SessionMetadataUnavailableError extends Error {
+export class SessionMetadataUnavailableError extends Error {
   constructor(readonly reason: "database-missing" | "schema-missing") {
     super(`Session metadata unavailable (${reason}); retry after the agent store is ready.`);
     this.name = "SessionMetadataUnavailableError";
