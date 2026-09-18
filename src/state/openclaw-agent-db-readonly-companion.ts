@@ -15,7 +15,6 @@ import {
 import {
   hasOpenClawAgentReadOnlySchema,
   openOpenClawAgentDatabaseReadOnly,
-  readOpenClawAgentDatabaseReadOnly,
   withFreshOpenClawAgentDatabaseReadOnly,
   type OpenClawAgentDatabaseReadOnlyResult,
   type OpenClawAgentReadOnlyDatabase,
@@ -47,12 +46,11 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
   writer: OpenClawAgentDatabase,
   operation: (database: OpenClawAgentReadOnlyDatabase) => T,
   options: OpenClawAgentDatabaseOptions,
-  behavior: { throwOnMissingTable?: boolean },
 ): OpenClawAgentDatabaseReadOnlyResult<T> {
   let companion = companions.get(writer.db);
   // Nested operations keep their own statement/transaction window and cleanup.
   if (companion?.active) {
-    return withFreshOpenClawAgentDatabaseReadOnly(operation, options, behavior);
+    return withFreshOpenClawAgentDatabaseReadOnly(operation, options);
   }
   if (
     companion &&
@@ -62,7 +60,7 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
     companion = undefined;
   }
   if (!companion && !isOpenClawAgentDatabasePathCurrent(writer)) {
-    return withFreshOpenClawAgentDatabaseReadOnly(operation, options, behavior);
+    return withFreshOpenClawAgentDatabaseReadOnly(operation, options);
   }
   if (!companion) {
     const opened = openOpenClawAgentDatabaseReadOnly(options);
@@ -83,7 +81,7 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
     try {
       // A pathname replacement during open keeps the old one-shot read contract.
       if (!matchesWriter(reader, writer)) {
-        return readOpenClawAgentDatabaseReadOnly(reader, operation, behavior);
+        return { found: true, value: operation(reader) };
       }
       enableNodeSqliteKyselyStatementCache(reader.db);
       unregisterDispose = registerNodeSqliteDisposeCallback(writer.db, close);
@@ -103,7 +101,7 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
       return { found: false, reason: "schema-missing" };
     }
     owned.active = true;
-    return readOpenClawAgentDatabaseReadOnly(owned.reader, operation, behavior);
+    return { found: true, value: operation(owned.reader) };
   } catch (error) {
     owned.close();
     throw error;

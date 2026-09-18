@@ -5,7 +5,6 @@ import { isOpenClawAgentDatabasePathCurrent } from "./openclaw-agent-db-identity
 import {
   hasOpenClawAgentReadOnlySchema,
   openOpenClawAgentDatabaseReadOnly,
-  readOpenClawAgentDatabaseReadOnly,
   withFreshOpenClawAgentDatabaseReadOnly,
   type OpenClawAgentDatabaseReadOnlyResult,
   type OpenClawAgentReadOnlyDatabase,
@@ -13,7 +12,6 @@ import {
 } from "./openclaw-agent-db-readonly-open.js";
 
 export type OpenClawAgentDatabaseReadOnlyBehavior = {
-  throwOnMissingTable?: boolean;
   allowExtension?: boolean;
 };
 
@@ -52,10 +50,9 @@ export class OpenClawAgentDatabaseReadOnlyScope {
   read<T>(
     operation: (database: OpenClawAgentReadOnlyDatabase) => T,
     options: OpenClawAgentDatabaseOptions,
-    behavior: OpenClawAgentDatabaseReadOnlyBehavior,
   ): OpenClawAgentDatabaseReadOnlyResult<T> {
     if (this.database?.db.isTransaction) {
-      return withFreshOpenClawAgentDatabaseReadOnly(operation, options, behavior);
+      return withFreshOpenClawAgentDatabaseReadOnly(operation, options);
     }
     if (this.database && !isOpenClawAgentDatabasePathCurrent(this.database)) {
       this.database.close();
@@ -73,7 +70,7 @@ export class OpenClawAgentDatabaseReadOnlyScope {
       this.database = undefined;
       return { found: false, reason: "schema-missing" };
     }
-    return readOpenClawAgentDatabaseReadOnly(this.database, operation, behavior);
+    return { found: true, value: operation(this.database) };
   }
 }
 
@@ -85,6 +82,6 @@ export function withScopedOpenClawAgentDatabaseReadOnly<T>(
 ): OpenClawAgentDatabaseReadOnlyResult<T> {
   const scope = behavior.allowExtension ? undefined : readOnlyScope.getStore();
   return scope?.matches(options.agentId, options.path)
-    ? scope.read(operation, options, behavior)
+    ? scope.read(operation, options)
     : withFreshOpenClawAgentDatabaseReadOnly(operation, options, behavior);
 }

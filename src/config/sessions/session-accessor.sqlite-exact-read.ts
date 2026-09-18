@@ -1,3 +1,4 @@
+import { expectDefined } from "@openclaw/normalization-core/expect";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import { iterateSqliteQuerySync } from "../../infra/kysely-sync.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
@@ -208,8 +209,15 @@ export type ExactSessionEntryBatchScope = Omit<SessionEntryReadScope, "sessionKe
   onReadSource?: (source: SessionEntryReadSource) => void;
 };
 
+class SessionMetadataUnavailableError extends Error {
+  constructor(readonly reason: "database-missing" | "schema-missing") {
+    super(`Session metadata unavailable (${reason}); retry after the agent store is ready.`);
+    this.name = "SessionMetadataUnavailableError";
+  }
+}
+
 function groupExactSessionEntryReadRequests(scopes: readonly ExactSessionEntryBatchScope[]) {
-  const results: Array<Result<ExactSessionEntry[], unknown>> = scopes.map(() => ok([]));
+  const results: Array<Result<ExactSessionEntry[], unknown> | undefined> = [];
   const targetCache: SessionSqliteTargetResolutionCache = new Map();
   const groups = new Map<
     string,
@@ -223,6 +231,7 @@ function groupExactSessionEntryReadRequests(scopes: readonly ExactSessionEntryBa
     const sessionKeys = scope.sessionKeys.map((key) => key.trim()).filter(Boolean);
     const [sessionKey] = sessionKeys;
     if (!sessionKey) {
+      results[index] = ok([]);
       continue;
     }
     try {
@@ -248,7 +257,7 @@ export function loadExactSessionEntryCandidatesReadOnlyBatch(
   const { groups, results } = groupExactSessionEntryReadRequests(scopes);
   for (const group of groups.values()) {
     try {
-      withOpenClawAgentDatabaseReadOnly(
+      const read = withOpenClawAgentDatabaseReadOnly(
         (database) =>
           readWithCanonicalSessionAdmission(database, () => {
             // Admission failures affect this store; an invalid requested row must not
@@ -270,11 +279,14 @@ export function loadExactSessionEntryCandidatesReadOnlyBatch(
           }),
         group.options,
       );
+      if (!read.found) {
+        throw new SessionMetadataUnavailableError(read.reason);
+      }
     } catch (error) {
       for (const { index } of group.requests) {
         results[index] = err(error);
       }
     }
   }
-  return results;
+  return scopes.map((_, index) => expectDefined(results[index], "exact session batch read result"));
 }

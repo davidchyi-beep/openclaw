@@ -131,7 +131,6 @@ export function readTranscriptExportSnapshotReadOnlySync(scope: SessionTranscrip
         { operationLabel: "session transcript export snapshot" },
       ),
     toDatabaseOptions(resolved),
-    { throwOnMissingTable: true },
   );
   return result.found ? result.value : undefined;
 }

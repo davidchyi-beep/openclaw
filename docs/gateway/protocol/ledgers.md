@@ -166,8 +166,9 @@ return sanitized task summaries, not raw runtime state.
     canonical completion timestamp before pagination.
   - Result: `{ "tasks": TaskSummary[], "nextCursor"?: string }`.
   - Failed session-metadata reads return `UNAVAILABLE` with the recorded cause
-    instead of an empty or partial page. Genuinely empty authorized results
-    remain successful empty pages.
+    instead of an empty or partial page, including when the database, schema,
+    or required table is unavailable. Genuinely empty authorized results from
+    a readable store remain successful empty pages.
 - `tasks.get` requires `operator.read`.
   - Params: `{ "taskId": string }`.
   - Result: `{ "task": TaskSummary }`.

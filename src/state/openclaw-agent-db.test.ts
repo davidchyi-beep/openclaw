@@ -1242,7 +1242,7 @@ describe("openclaw agent database", () => {
     },
   );
 
-  it.each([false, true])("preserves missing-table adaptation (fresh-only: %s)", (freshOnly) => {
+  it.each([false, true])("propagates missing-table errors (fresh-only: %s)", (freshOnly) => {
     const stateDir = createTempStateDir();
     const options = {
       agentId: "worker-1",
@@ -1255,25 +1255,18 @@ describe("openclaw agent database", () => {
     const readOnly = freshOnly
       ? withFreshOpenClawAgentDatabaseReadOnly
       : withOpenClawAgentDatabaseReadOnly;
-    const read = (throwOnMissingTable = false) =>
-      readOnly(
-        ({ db }) => {
-          readDb = db;
-          return db.prepare("SELECT * FROM session_nodes").all();
-        },
-        options,
-        { throwOnMissingTable },
-      );
+    const read = () =>
+      readOnly(({ db }) => {
+        readDb = db;
+        return db.prepare("SELECT * FROM session_nodes").all();
+      }, options);
 
-    expect(read()).toEqual({ found: false, reason: "table-missing" });
-    expect(() => read(true)).toThrow(/no such table: session_nodes/);
+    expect(read).toThrow(/no such table: session_nodes/);
     expect(readDb === owner.db).toBe(!freshOnly);
     expect(readDb?.isOpen).toBe(!freshOnly);
     expect(owner.db.isOpen).toBe(true);
     expect(closeOpenClawAgentDatabaseByPath(databasePath)).toBe(true);
-    expect(read()).toEqual({ found: false, reason: "table-missing" });
-    expect(readDb?.isOpen).toBe(false);
-    expect(() => read(true)).toThrow(/no such table: session_nodes/);
+    expect(read).toThrow(/no such table: session_nodes/);
     expect(readDb?.isOpen).toBe(false);
   });
 

@@ -21,7 +21,7 @@ type SessionStoreTargetsReadResult =
   | { available: true; targets: SessionStoreTarget[] }
   | {
       available: false;
-      reason: "database-missing" | "schema-missing" | "table-missing" | "read-failed";
+      reason: "database-missing" | "schema-missing" | "read-failed";
     };
 type FixedSessionStoreReadSnapshot =
   | {

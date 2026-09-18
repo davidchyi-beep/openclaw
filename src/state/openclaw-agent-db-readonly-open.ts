@@ -3,7 +3,6 @@ import type { DatabaseSync } from "node:sqlite";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync-cache-state.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
-import { sqliteErrorCode } from "../infra/sqlite-error-diagnostics.js";
 import type { OpenClawAgentDatabaseOptions } from "./openclaw-agent-db-contract.js";
 import { registerOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
 import {
@@ -34,7 +33,7 @@ export type OpenClawAgentDatabaseReadOnlyOpenResult =
 
 export type OpenClawAgentDatabaseReadOnlyResult<T> =
   | { found: true; value: T }
-  | { found: false; reason: "database-missing" | "schema-missing" | "table-missing" };
+  | { found: false; reason: "database-missing" | "schema-missing" };
 
 /** Recheck committed admission facts before using an existing read-only connection. */
 export function hasOpenClawAgentReadOnlySchema(database: OpenClawAgentReadOnlyDatabase): boolean {
@@ -48,39 +47,18 @@ export function hasOpenClawAgentReadOnlySchema(database: OpenClawAgentReadOnlyDa
   return true;
 }
 
-/** Apply the same missing-table policy to fresh and borrowed read-only queries. */
-export function readOpenClawAgentDatabaseReadOnly<T>(
-  database: OpenClawAgentReadOnlyDatabase,
-  operation: (database: OpenClawAgentReadOnlyDatabase) => T,
-  behavior: { throwOnMissingTable?: boolean } = {},
-): OpenClawAgentDatabaseReadOnlyResult<T> {
-  try {
-    return { found: true, value: operation(database) };
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      sqliteErrorCode(error) === "ERR_SQLITE_ERROR" &&
-      /\bno such table:/iu.test(error.message) &&
-      !behavior.throwOnMissingTable
-    ) {
-      return { found: false, reason: "table-missing" };
-    }
-    throw error;
-  }
-}
-
 /** Fresh-only callers do not need the writable runtime's process-held connection cache. */
 export function withFreshOpenClawAgentDatabaseReadOnly<T>(
   operation: (database: OpenClawAgentReadOnlyDatabase) => T,
   options: OpenClawAgentDatabaseOptions,
-  behavior: { allowExtension?: boolean; throwOnMissingTable?: boolean } = {},
+  behavior: { allowExtension?: boolean } = {},
 ): OpenClawAgentDatabaseReadOnlyResult<T> {
   const opened = openOpenClawAgentDatabaseReadOnly(options, behavior);
   if (!opened.found) {
     return opened;
   }
   try {
-    return readOpenClawAgentDatabaseReadOnly(opened.database, operation, behavior);
+    return { found: true, value: operation(opened.database) };
   } finally {
     opened.database.close();
   }
