@@ -127,7 +127,7 @@ export async function publishSessionStateArchives(
                 ),
               databaseOptions,
             );
-            if (pending.found ? !pending.value : pending.reason !== "table-missing") {
+            if (!pending.found || !pending.value) {
               return [];
             }
           } catch {

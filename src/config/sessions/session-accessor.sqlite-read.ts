@@ -4,6 +4,7 @@ import {
   iterateSqliteQuerySync,
   prepareSqliteQuerySync,
 } from "../../infra/kysely-sync.js";
+import { sqliteErrorCode } from "../../infra/sqlite-error-diagnostics.js";
 import { assertSqliteJsonlReadBudget } from "../../infra/sqlite-jsonl-budget.js";
 import { coerceRequiredSqliteNumber as sqliteNumber } from "../../infra/sqlite-number.js";
 import { runSqliteDeferredTransactionSync } from "../../infra/sqlite-transaction.js";
@@ -435,19 +436,29 @@ export function readTranscriptStatsBatchReadOnlySync(
     groups.set(key, group);
   }
   for (const group of groups.values()) {
-    const read = withOpenClawAgentDatabaseReadOnly((database) => {
-      const stats = readTranscriptStatsBatchFromDatabase(
-        database,
-        group.items.map((item) => item.sessionId),
+    try {
+      const read = withOpenClawAgentDatabaseReadOnly(
+        (database) =>
+          readTranscriptStatsBatchFromDatabase(
+            database,
+            group.items.map((item) => item.sessionId),
+          ),
+        group.options,
       );
-      for (const [index, item] of group.items.entries()) {
-        results[item.index] = stats[index]!;
+      if (read.found) {
+        for (const [index, item] of group.items.entries()) {
+          results[item.index] = read.value[index]!;
+        }
       }
-    }, group.options);
-    if (!read.found) {
-      for (const item of group.items) {
-        results[item.index] = null;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        sqliteErrorCode(error) !== "ERR_SQLITE_ERROR" ||
+        !/\bno such table:/iu.test(error.message)
+      ) {
+        throw error;
       }
+      // A missing table leaves the whole store unavailable, including earlier chunks.
     }
   }
   return results;
