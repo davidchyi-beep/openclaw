@@ -127,6 +127,7 @@ afterEach(async () => {
   await closeOpenClawStateDatabaseAsync();
   closeOpenClawStateDatabaseForTest();
   resetSystemEventsForTest();
+  resetHeartbeatEventsForTest();
   cleanupTempDirs(tempDirs);
   vi.unstubAllEnvs();
 });

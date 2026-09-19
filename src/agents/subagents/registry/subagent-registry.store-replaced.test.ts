@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import { createGatewayRequestContext } from "../../../gateway/server-request-context.js";
 import { makeContextParams } from "../../../gateway/server-request-context.test-support.js";
+import { resetHeartbeatEventsForTest } from "../../../infra/heartbeat-events.js";
 import { publishSystemEventStoreResolver } from "../../../infra/system-event-ownership.js";
 import {
   closeOpenClawStateDatabaseForTest,
@@ -46,6 +47,7 @@ afterEach(() => {
   resetSubagentRegistryForTests({ persist: false });
   resetTaskRegistryForTests({ persist: false });
   publishSystemEventStoreResolver(undefined);
+  resetHeartbeatEventsForTest();
   testing.setDepsForTest();
   closeOpenClawStateDatabaseForTest();
   vi.unstubAllEnvs();
