@@ -45,6 +45,7 @@ export function listRunsForRequesterFromRuns(
   options?: {
     requesterRunId?: string;
     requesterAgentId?: string;
+    requesterStorePath?: string | null;
   },
 ): SubagentRunRecord[] {
   const key = requesterSessionKey.trim();
@@ -66,6 +67,8 @@ export function listRunsForRequesterFromRuns(
     if (
       entry.requesterSessionKey === key &&
       (!options?.requesterAgentId || entry.requesterAgentId === options.requesterAgentId) &&
+      (options?.requesterStorePath === undefined ||
+        (entry.requesterStorePath ?? null) === options.requesterStorePath) &&
       (typeof lowerBound !== "number" || entry.createdAt >= lowerBound) &&
       (typeof upperBound !== "number" || entry.createdAt <= upperBound)
     ) {
@@ -545,13 +548,16 @@ function scopeRootDescendantsToRequesterAgent(
   runs: Map<string, SubagentRunRecord>,
   rootSessionKey: string,
   requesterAgentId?: string,
+  requesterStorePath?: string | null,
 ): Map<string, SubagentRunRecord> {
-  return requesterAgentId
+  return requesterAgentId || requesterStorePath !== undefined
     ? new Map(
         [...runs].filter(
           ([, entry]) =>
             entry.requesterSessionKey !== rootSessionKey ||
-            entry.requesterAgentId === requesterAgentId,
+            ((!requesterAgentId || entry.requesterAgentId === requesterAgentId) &&
+              (requesterStorePath === undefined ||
+                (entry.requesterStorePath ?? null) === requesterStorePath)),
         ),
       )
     : runs;
@@ -562,9 +568,15 @@ export function countActiveDescendantRunsFromRuns(
   runs: Map<string, SubagentRunRecord>,
   rootSessionKey: string,
   requesterAgentId?: string,
+  requesterStorePath?: string | null,
 ): number {
   return buildSubagentRunReadIndexFromRuns({
-    runs: scopeRootDescendantsToRequesterAgent(runs, rootSessionKey, requesterAgentId),
+    runs: scopeRootDescendantsToRequesterAgent(
+      runs,
+      rootSessionKey,
+      requesterAgentId,
+      requesterStorePath,
+    ),
   }).countActiveDescendantRuns(rootSessionKey);
 }
 
@@ -587,9 +599,15 @@ export function hasDescendantRunAwaitingSettleFromRuns(
   rootSessionKey: string,
   excludeRunId?: string,
   requesterAgentId?: string,
+  requesterStorePath?: string | null,
 ): boolean {
   return buildSubagentRunReadIndexFromRuns({
-    runs: scopeRootDescendantsToRequesterAgent(runs, rootSessionKey, requesterAgentId),
+    runs: scopeRootDescendantsToRequesterAgent(
+      runs,
+      rootSessionKey,
+      requesterAgentId,
+      requesterStorePath,
+    ),
   }).hasDescendantRunAwaitingSettle(rootSessionKey, excludeRunId);
 }
 

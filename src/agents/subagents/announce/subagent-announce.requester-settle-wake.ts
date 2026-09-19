@@ -176,6 +176,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
   const requesterSessionKey = params.requesterSessionKey.trim();
   const cfg = getRuntimeConfig();
   const requesterAgentId = resolveSubagentRequesterAgentId(cfg, params.settledEntry);
+  const requesterStorePath = params.settledEntry.requesterStorePath ?? null;
   const initialState = params.settledEntry.requesterSettleWake;
   if (!requesterSessionKey || !initialState) {
     return false;
@@ -234,6 +235,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
 
   const listedRuns = listSubagentRunsForRequester(requesterSessionKey, {
     requesterAgentId,
+    requesterStorePath,
   });
   const requesterRuns = Array.isArray(listedRuns) ? listedRuns : [];
   const currentSettledEntry = requesterRuns.find(
@@ -254,6 +256,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
       requesterSessionKey,
       currentSettledEntry.runId,
       requesterAgentId,
+      requesterStorePath,
     );
 
   const frozenBatchRunIds = currentState.batchRunIds;
@@ -356,7 +359,11 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
   }
   function deferBatch(
     state: RequesterSettleWakeBatchState,
-    countTowardsLimit = countActiveDescendantRuns(requesterSessionKey, requesterAgentId) === 0,
+    countTowardsLimit = countActiveDescendantRuns(
+      requesterSessionKey,
+      requesterAgentId,
+      requesterStorePath,
+    ) === 0,
   ): void {
     const now = Date.now();
     if ((state.nextAttemptAt ?? 0) > now) {
@@ -573,7 +580,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
     };
     const isBatchCurrent = () => {
       const currentRuns = filterCurrentDirectChildCompletionRows(
-        listSubagentRunsForRequester(requesterSessionKey, { requesterAgentId }),
+        listSubagentRunsForRequester(requesterSessionKey, { requesterAgentId, requesterStorePath }),
         {
           requesterSessionKey,
           requesterAgentId,
