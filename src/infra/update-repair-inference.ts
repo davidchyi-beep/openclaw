@@ -54,13 +54,23 @@ export async function selectUpdateRepairInference(params: {
       const configuredModel = params.config.models?.providers?.[route.provider]?.models.find(
         (entry) => entry.id === route.model,
       );
-      // Note: the previous hard gate on `supportsModelTools(model)` excluded any
-      // provider whose `compat.supportsTools` flag is unset or false, even when
-      // the route is otherwise authenticated and the live `verify()` turn
-      // below succeeds. That over-rejection is the failure mode tracked in
-      // openclaw/openclaw#152759. Tool-capability is now exercised at verify
-      // time instead of via static metadata, so the gate is removed.
-      if (route.runner !== "embedded") {
+      // Per ClawSweeper review on PR #152975, the explicit-false filtering on
+      // `compat.supportsTools` is load-bearing: it lets a text-only repair
+      // route be skipped in favor of a tool-capable fallback. The previous
+      // PR (https://github.com/openclaw/openclaw/pull/152975) removed both
+      // checks, which would have let an authenticated text-only primary win
+      // the selection and then fail later in repair execution. Restored.
+      //
+      // Note: `supportsModelTools` already treats absent metadata as
+      // permissive (it returns `compat?.supportsTools !== false`), so
+      // providers whose catalog entry omits the flag are not excluded.
+      // The actual failure mode in openclaw/openclaw#152759 is downstream
+      // of this gate and remains under investigation.
+      if (
+        route.runner !== "embedded" ||
+        !supportsModelTools(model ?? {}) ||
+        !supportsModelTools(configuredModel ?? {})
+      ) {
         eligibility.set(route, false);
         return false;
       }
