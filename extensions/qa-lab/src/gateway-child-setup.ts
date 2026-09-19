@@ -314,9 +314,11 @@ export async function prepareQaGatewayChild(
   let packagedMockAuthStaged = false;
 
   const nodeExecPath = gatewayExecutablePath ?? (await resolveQaNodeExecPath());
-  const cliArgsPrefix = gatewayExecutablePath
-    ? [...runtimePreloadArgs, ...gatewayArgsPrefix]
-    : [...runtimePreloadArgs, distEntryPath, ...gatewayArgsPrefix];
+  const cliArgsPrefix = gatewayCommand?.processBoundary
+    ? gatewayArgsPrefix
+    : gatewayExecutablePath
+      ? [...runtimePreloadArgs, ...gatewayArgsPrefix]
+      : [...runtimePreloadArgs, distEntryPath, ...gatewayArgsPrefix];
   const gatewayLaunchArgsPrefix = gatewayCommand?.processBoundary
     ? gatewayArgsPrefix
     : cliArgsPrefix;
