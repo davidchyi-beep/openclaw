@@ -1197,7 +1197,7 @@ upload_release_evidence_assets() {
 verify_published_release() {
   local release_version evidence_path canonical_evidence_path clawhub_runtime_state_path bootstrap_run_arg_present
   local expected_attempt expected_id run_attempt run_id run_label run_url target_sha
-  local validation_file workflow_ref telegram_waiver
+  local validation_file workflow_ref telegram_waiver verifier
   local -a verify_args
 
   release_version="${RELEASE_TAG#v}"
@@ -1246,7 +1246,9 @@ verify_published_release() {
     verify_args+=(--npm-telegram-run "${NPM_TELEGRAM_RUN_ID}")
   fi
 
+  verifier="release-verify-beta.ts"
   if [[ "${PUBLISH_OPENCLAW_NPM}" == "true" ]]; then
+    verifier="release-verify-publish.ts"
     verify_args+=(
       --postpublish-verifier
       "${GITHUB_WORKSPACE}/.release-harness/scripts/openclaw-npm-postpublish-verify.ts"
@@ -1257,7 +1259,7 @@ verify_published_release() {
     OPENCLAW_NPM_EXPECTED_WORKFLOW_SHA="${openclaw_npm_expected_workflow_sha}" \
     OPENCLAW_NPM_EXPECTED_RUN_ATTEMPT="${openclaw_npm_run_attempt}" \
     node --import tsx \
-      "${GITHUB_WORKSPACE}/.release-harness/scripts/release-verify-beta.ts" \
+      "${GITHUB_WORKSPACE}/.release-harness/scripts/${verifier}" \
       "${verify_args[@]}"
 
   record_postpublish_diagnostics binding-start

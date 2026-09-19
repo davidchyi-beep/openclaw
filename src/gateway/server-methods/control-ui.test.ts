@@ -805,3 +805,61 @@ describe("controlUi.sessionPullRequests.checks", () => {
     });
   });
 });
+
+describe("controlUi.linkPreview", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("returns no metadata and performs no external request when fetching is disabled", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const respond = vi.fn();
+    await createControlUiHandlers()["controlUi.linkPreview"]!(
+      requestOptions({ url: "https://disabled.example/page" }, respond, {
+        context: {
+          getRuntimeConfig: () => ({
+            gateway: { controlUi: { automaticallyFetchFavicons: false } },
+          }),
+        },
+      }),
+    );
+    expect(respond).toHaveBeenCalledWith(true, {}, undefined);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { url: "http://127.0.0.1/private" },
+    { url: "https://public.example", token: "not-forwarded" },
+    {},
+  ])("rejects malformed or private targets %j", async (params) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const respond = vi.fn();
+    await createControlUiHandlers()["controlUi.linkPreview"]!(requestOptions(params, respond));
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ code: "INVALID_REQUEST" }),
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("projects anonymous public metadata through the registered handler", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (input) =>
+      (input instanceof Request ? input.url : input.toString()).endsWith("/favicon.ico")
+        ? new Response(null, { status: 404 })
+        : new Response('<head><meta property="og:title" content="Handler preview"></head>', {
+            headers: { "content-type": "text/html" },
+          }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const respond = vi.fn();
+    await createControlUiHandlers()["controlUi.linkPreview"]!(
+      requestOptions({ url: "https://rpc-preview.example/page" }, respond),
+    );
+    expect(respond).toHaveBeenCalledWith(true, { title: "Handler preview" }, undefined);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});

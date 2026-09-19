@@ -408,8 +408,9 @@ function parseArgs(argv: string[]) {
   };
 }
 
-async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
-  const options = parseArgs(argv);
+export async function verifyOpenClawNpmResumeRun(
+  options: Parameters<typeof resolveOpenClawNpmResumeRun>[0],
+) {
   const result = resolveOpenClawNpmResumeRun(options);
   const { verifyNpmProvenanceAttestation } = await import("./openclaw-npm-postpublish-verify.ts");
   await verifyNpmProvenanceAttestation({
@@ -420,6 +421,11 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
     expectedWorkflowRef: result.workflowRef,
     expectedWorkflowSha: result.workflowSha,
   });
+  return result;
+}
+
+async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const result = await verifyOpenClawNpmResumeRun(parseArgs(argv));
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

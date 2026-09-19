@@ -17,6 +17,8 @@ packages/gateway-protocol/src/schema/since.ts
 packages/gateway-protocol/src/schema/worker-admission.ts
 packages/gateway-protocol/src/schema/worker-computer.ts
 packages/gateway-protocol/src/schema/worker-protocol-primitives.ts
+packages/gateway-protocol/src/theme-ids.ts
+packages/gateway-protocol/src/theme.ts
 packages/gateway-protocol/src/update-run-vocabulary.ts
 packages/llm-core/package.json
 packages/llm-core/src/model-data.ts
@@ -876,6 +878,7 @@ src/plugins/manifest-record.ts
 src/plugins/manifest-registry-installed.ts
 src/plugins/manifest-registry.ts
 src/plugins/manifest-setup-normalizers.ts
+src/plugins/manifest-themes.ts
 src/plugins/manifest.ts
 src/plugins/min-host-version.ts
 src/plugins/module-export.ts
@@ -966,6 +969,7 @@ src/plugins/runtime-degraded-state.ts
 src/plugins/runtime-state-key.ts
 src/plugins/runtime-state.ts
 src/plugins/runtime-workspace-state.ts
+src/plugins/runtime/execution-frame.ts
 src/plugins/runtime/gateway-request-scope.ts
 src/plugins/runtime/generation-scope.ts
 src/plugins/runtime/generation-state.ts

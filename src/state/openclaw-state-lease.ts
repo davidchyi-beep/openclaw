@@ -556,6 +556,21 @@ export async function withOpenClawStateLease<T>(
     void workerHeartbeat?.stop();
     void startingHeartbeat?.stop();
   };
+  const renewForHandoff = () => {
+    const params = { ...identity, database: validated.database };
+    try {
+      return renew({
+        ...params,
+        operationLabel: validated.operationLabel,
+        leaseMs: validated.leaseMs,
+      });
+    } catch (error) {
+      if (!isLeaseWriteContention(error)) {
+        throw error;
+      }
+      return verifyLeaseOwnership(params);
+    }
+  };
   const startWorker = async (expiresAt: number) => {
     const started = startOpenClawStateLeaseHeartbeat({
       path: resolveLeaseDatabasePath(validated.database),
@@ -565,6 +580,10 @@ export async function withOpenClawStateLease<T>(
       heartbeatMs,
       expiresAt,
       onLost: abortLost,
+      renewDuringStartup: () => {
+        assertActive();
+        return renewForHandoff();
+      },
     });
     startingHeartbeat = started;
     try {
@@ -611,6 +630,8 @@ export async function withOpenClawStateLease<T>(
       return expiresAt;
     },
     pause: async () => {
+      // Give drainage a current lease before freezing its durable expiry for capture.
+      confirmedExpiresAt = renewForHandoff();
       stopTimers();
       await workerHeartbeat?.stop();
       workerHeartbeat = undefined;

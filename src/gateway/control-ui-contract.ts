@@ -13,6 +13,13 @@ export const CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT =
 /** Maximum session keys retained by one Control UI PR subscription. */
 export const CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS = 200;
 
+/** Anonymous public-page presentation; remote URLs never cross into the renderer. */
+export type ControlUiLinkPreview = {
+  title?: string;
+  imageDataUrl?: string;
+  faviconDataUrl?: string;
+};
+
 /** Bounded session metadata rendered by Control UI session-link hover cards. */
 export type ControlUiSessionPreview =
   | {

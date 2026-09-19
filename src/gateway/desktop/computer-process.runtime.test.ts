@@ -64,7 +64,7 @@ module.exports = {
   config.plugins!.allow = [pluginId];
   const configPath = path.join(home, "openclaw.json");
   fs.writeFileSync(configPath, JSON.stringify(config));
-  const sdkHost = createCompiledSdkHost(computerUseSdkEntrypoint, (prefix) =>
+  const sdkHost = createCompiledSdkHost([computerUseSdkEntrypoint], (prefix) =>
     tempDirs.make(prefix),
   );
   const child = startComputerHostProcess({

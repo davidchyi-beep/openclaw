@@ -1963,7 +1963,13 @@ function assertSelectedPackagesResolved(params: {
 
 export async function verifyBetaRelease(
   args: ReleaseVerifyBetaArgs,
-  options: { rootDir?: string } = {},
+  options: {
+    rootDir?: string;
+    pluginNpmReadback?: {
+      verify: (packageName: string, version: string, distTag: string) => Promise<void>;
+      evidence: Record<string, unknown>[];
+    };
+  } = {},
 ): Promise<string[]> {
   const rootDir = options.rootDir ?? resolve(".");
   const diagnostic = new PostpublishDiagnostics(args, rootDir, "verify");
@@ -2036,7 +2042,13 @@ export async function verifyBetaRelease(
     });
     for (const plugin of npmPlugins) {
       diagnostic.package("pluginNpm", plugin.packageName, "started");
-      await verifyNpmPackage(plugin.packageName, args.version, args.distTag);
+      // Full publication owns tarball readback, including prior-parent publishes.
+      // Only standalone health checks retain metadata verification.
+      if (options.pluginNpmReadback) {
+        await options.pluginNpmReadback.verify(plugin.packageName, args.version, args.distTag);
+      } else {
+        await verifyNpmPackage(plugin.packageName, args.version, args.distTag);
+      }
       const scope: NpmDiagnosticScope = { stage: "pluginNpm", packageName: plugin.packageName };
       diagnostic.observeNpmPublication(scope);
       const betaFloorError = await readNpmBetaFloorError(plugin.packageName, args.version);
@@ -2247,6 +2259,9 @@ export async function verifyBetaRelease(
             npmProvenanceAttestationMatched: args.skipPostpublish ? null : true,
             githubReleaseUrl: releaseUrl ?? null,
             pluginNpmPackageCount: npmPlugins.length,
+            ...(options.pluginNpmReadback
+              ? { pluginNpmPublicationReadbacks: options.pluginNpmReadback.evidence }
+              : {}),
             clawHubPackageCount: clawHubPlugins.length,
             workflowRuns,
             clawHubBootstrapEvidence:
