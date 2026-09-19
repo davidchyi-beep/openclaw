@@ -421,6 +421,7 @@ describe("model resolution auth row snapshots", () => {
     await withOpenClawTestState({ label: "model-auth-row-external-write" }, async (state) => {
       await state.writeAuthProfiles(fixtureStore("fixture-original"));
       const read = vi.spyOn(sqliteWorker, "runSqliteReadOnlyWorker");
+      const clock = vi.spyOn(performance, "now").mockReturnValue(0);
       const databasePath = resolveAuthProfileDatabasePath(state.agentDir());
       const resolve = modelResolver(state);
       try {
@@ -446,6 +447,10 @@ describe("model resolution auth row snapshots", () => {
         expect(getRuntimeAuthProfileStoreMutationRevisionAtDatabasePath(databasePath)).toBe(
           mutationRevision,
         );
+        clock.mockReturnValue(99);
+        expect((await resolve()).model?.name).toBe(`${PROFILE_ID}:api_key`);
+        expect(read.mock.calls.filter(([pathname]) => pathname === databasePath)).toHaveLength(1);
+        clock.mockReturnValue(100);
         expect((await resolve()).model?.name).toBe(`${PROFILE_ID}:token`);
         const current = await loadAuthProfileStoreForRuntimeAsync(state.agentDir(), {
           readOnly: true,
@@ -457,6 +462,7 @@ describe("model resolution auth row snapshots", () => {
           .soft(read.mock.calls.filter(([pathname]) => pathname === databasePath))
           .toHaveLength(2);
       } finally {
+        clock.mockRestore();
         read.mockRestore();
       }
     });
