@@ -39,6 +39,7 @@ const BARE_FILE_EXTENSIONS = new Set([
   "cpp",
   "cs",
   "css",
+  "csv",
   "diff",
   "fish",
   "go",
