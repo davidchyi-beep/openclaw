@@ -263,6 +263,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createInterface } = require("node:readline");
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\n");
+const publish = (name, value) => {
+  const target = path.join(process.env.CLAUDE_CONFIG_DIR, name);
+  fs.writeFileSync(target + ".tmp", JSON.stringify(value));
+  fs.renameSync(target + ".tmp", target);
+};
 if (process.argv.includes("--version")) { console.log("2.1.226 (fixture)"); process.exit(0); }
 if (process.argv.includes("auth")) { send({ loggedIn: true }); process.exit(0); }
 let sessionId;
@@ -273,7 +278,7 @@ const reply = () => send({ type: "assistant", message: { role: "assistant", cont
 process.on("SIGCONT", () => {
   if (resumed) return;
   resumed = true;
-  fs.writeFileSync(path.join(process.env.CLAUDE_CONFIG_DIR, "resumed.json"), JSON.stringify({ time: Date.now() }));
+  publish("resumed.json", { time: Date.now() });
   if (behavior !== "quiet" && behavior !== "complete") reply();
 });
 // Completion and heartbeat delays use the same scenario clock as the host watchdog.
@@ -295,7 +300,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     }
     send({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Working." }] } });
-    fs.writeFileSync(path.join(process.env.CLAUDE_CONFIG_DIR, "ready.json"), JSON.stringify({ pid: process.pid, time: Date.now(), turns }));
+    publish("ready.json", { pid: process.pid, time: Date.now(), turns });
   }
 });`;
     await fs.writeFile(path.join(binDir, "claude"), `#!${process.execPath}\n${fixture}`, {
