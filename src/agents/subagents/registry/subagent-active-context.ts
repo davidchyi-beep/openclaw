@@ -4,6 +4,7 @@
  * Renders sanitized runtime-owned subagent facts for the current-turn carrier.
  */
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { resolveSessionStoreIdentity } from "../../../config/sessions/session-store-path.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { parseAgentSessionKey } from "../../../routing/session-key.js";
 import { sanitizeForPromptLiteral } from "../../sanitize-for-prompt.js";
@@ -90,7 +91,11 @@ export function buildActiveSubagentRuntimeContext(params: {
   });
   const agentId = params.controllerAgentId ?? parseAgentSessionKey(controllerSessionKey)?.agentId;
   const snapshot = agentId
-    ? getSubagentRunsSnapshotForSession(subagentRuns, controllerSessionKey)
+    ? getSubagentRunsSnapshotForSession(
+        subagentRuns,
+        controllerSessionKey,
+        resolveSessionStoreIdentity({ sessionKey: controllerSessionKey, agentId }, params.cfg),
+      )
     : new Map<string, SubagentRunRecord>();
   const readSnapshot = getSubagentSessionListRunsSnapshotForRead(subagentRuns);
   for (const [runId, entry] of snapshot) {

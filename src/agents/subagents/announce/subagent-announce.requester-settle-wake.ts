@@ -5,6 +5,7 @@
  * this module selects a drained wave and delivers its synthesized wake.
  */
 import { getRuntimeConfig } from "../../../config/config.js";
+import { isSystemEventStoreCurrent } from "../../../infra/system-event-ownership.js";
 import { logWarn } from "../../../logger.js";
 import { getSharedGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import { isCronSessionKey } from "../../../sessions/session-key-utils.js";
@@ -306,6 +307,25 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
   }
   const batchRunIds = settledBatch.map((entry) => entry.runId).toSorted();
   const selectedState = readSharedBatchState(settledBatch);
+  const isStoreCurrent = () =>
+    settledBatch.every((entry) =>
+      isSystemEventStoreCurrent(requesterSessionKey, entry.requesterStorePath, requesterAgentId),
+    );
+  const retireReplacedStore = () => {
+    if (isStoreCurrent()) {
+      return false;
+    }
+    completeBatch(settledBatch, selectedState, {
+      delivered: false,
+      path: "none",
+      error: "store replaced",
+      disposition: "intentional_non_delivery",
+    });
+    return true;
+  };
+  if (retireReplacedStore()) {
+    return false;
+  }
   const getRequesterRun = () =>
     getLatestLiveSubagentRunByChildSessionKey(
       requesterSessionKey,
@@ -439,6 +459,9 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
     return false;
   }
   const preparedFindings = await readChildCompletionFindings(completionRows);
+  if (retireReplacedStore()) {
+    return false;
+  }
   const requesterSessionOrigin = normalizeDeliveryContext(params.requesterOrigin);
   const directOrigin = resolveAnnounceOrigin(requesterEntry, requesterSessionOrigin);
   const completionChannel = normalizeMessageChannel(directOrigin?.channel);
@@ -564,6 +587,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
     };
     const isSourceSessionEffectsAllowed = () =>
       !params.signal?.aborted &&
+      isStoreCurrent() &&
       preparedFindings.isCurrent() &&
       !isGatewayClosed() &&
       isBatchCurrent() &&
@@ -571,6 +595,9 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
       !isBatchDeliveryClosed();
     const settleRevokedBatch = (): boolean => {
       if (isGatewayClosed() || !isBatchCurrent()) {
+        return true;
+      }
+      if (retireReplacedStore()) {
         return true;
       }
       if (isBatchDeliveryClosed() || !isRequesterCurrent()) {

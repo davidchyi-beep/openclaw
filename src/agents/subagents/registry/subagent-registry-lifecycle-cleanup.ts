@@ -1,5 +1,6 @@
 import type { cleanupBrowserSessionsForLifecycleEnd } from "../../../browser-lifecycle-cleanup.js";
 import { runWithoutOwnedSessionTranscriptWrites } from "../../../config/sessions/transcript-write-context.js";
+import { isSystemEventStoreCurrent } from "../../../infra/system-event-ownership.js";
 import {
   isGatewayRestartDraining,
   runWithGatewayIndependentRootWorkAdmission,
@@ -11,7 +12,7 @@ import { recordSubagentTerminalState } from "../../../sessions/session-state-eve
 import { retireSessionMcpRuntimeForSessionKey } from "../../agent-bundle-mcp-tools.js";
 import { blockSubagentCompletionDelivery } from "../completion/subagent-completion-admission.store.js";
 import { releaseSwarmRun } from "../swarm/swarm-scheduler.js";
-import { getDeliveryLastError } from "./subagent-delivery-state.js";
+import { getDeliveryLastError, isDeliverySuspended } from "./subagent-delivery-state.js";
 import {
   SUBAGENT_ENDED_REASON_KILLED,
   type SubagentLifecycleEndedReason,
@@ -25,6 +26,7 @@ import {
 } from "./subagent-registry-helpers.js";
 import type {
   SubagentLifecycleCommonContext,
+  SubagentLifecycleAnnounceCleanupContext,
   SubagentLifecycleCompletionContext,
   SubagentLifecycleCleanupContext,
   SubagentLifecycleWakeContext,
@@ -180,6 +182,35 @@ export function suspendPendingFinalDelivery(
   logAnnounceGiveUp(args.entry, args.reason);
   // Suspension settles this child for requester drain while cleanup stays incomplete.
   scheduleRequesterSettleWake(context, args.runId, args.entry);
+}
+
+export function isSubagentCompletionDeliveryAllowed(
+  context: SubagentLifecycleAnnounceCleanupContext,
+  entry: SubagentRunRecord,
+  cleanupGeneration: number,
+  committedDelivery: SubagentRunRecord["delivery"],
+): boolean {
+  const { runId, requesterSessionKey, requesterStorePath, requesterAgentId } = entry;
+  const allowed =
+    entry.suppressCompletionDelivery !== true &&
+    !isDeliverySuspended(entry) &&
+    (entry.delivery?.status !== "delivered" || entry.delivery === committedDelivery) &&
+    context.isCleanupAttemptCurrent(runId, entry, cleanupGeneration);
+  if (
+    !allowed ||
+    isSystemEventStoreCurrent(requesterSessionKey, requesterStorePath, requesterAgentId)
+  ) {
+    return allowed;
+  }
+  if (entry.delivery?.status !== "delivered") {
+    suspendPendingFinalDelivery(context, {
+      runId,
+      entry,
+      reason: "permanent_failure",
+      error: "store replaced",
+    });
+  }
+  return false;
 }
 
 export function beginSubagentCleanup(
