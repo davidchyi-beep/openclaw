@@ -1,6 +1,9 @@
 import type { cleanupBrowserSessionsForLifecycleEnd } from "../../../browser-lifecycle-cleanup.js";
 import { runWithoutOwnedSessionTranscriptWrites } from "../../../config/sessions/transcript-write-context.js";
-import { isSystemEventStoreCurrent } from "../../../infra/system-event-ownership.js";
+import {
+  isSystemEventStoreCurrent,
+  recordSystemEventStoreReplaced,
+} from "../../../infra/system-event-ownership.js";
 import {
   isGatewayRestartDraining,
   runWithGatewayIndependentRootWorkAdmission,
@@ -30,6 +33,7 @@ import type {
   SubagentLifecycleCompletionContext,
   SubagentLifecycleCleanupContext,
   SubagentLifecycleWakeContext,
+  SubagentLifecycleOptions,
 } from "./subagent-registry-lifecycle-context.js";
 import {
   buildSafeLifecycleErrorMeta,
@@ -165,6 +169,7 @@ export function suspendPendingFinalDelivery(
     entry: SubagentRunRecord;
     reason: "expiry" | "permanent_failure";
     error?: string;
+    storeReplaced?: true;
   },
 ): void {
   const params = context.options;
@@ -174,6 +179,7 @@ export function suspendPendingFinalDelivery(
     reason: args.error ?? getDeliveryLastError(args.entry) ?? args.reason,
     suspendedReason: args.reason,
     lastDropReason: args.entry.delivery?.lastDropReason,
+    storeReplaced: args.storeReplaced,
   });
   if (!committed) {
     throw new Error(`subagent completion owner changed before suspension: ${args.runId}`);
@@ -208,9 +214,43 @@ export function isSubagentCompletionDeliveryAllowed(
       entry,
       reason: "permanent_failure",
       error: "store replaced",
+      storeReplaced: true,
     });
   }
   return false;
+}
+
+export function suspendReplacedStoreNotifications(options: SubagentLifecycleOptions): void {
+  for (const entry of options.runs.values()) {
+    const { delivery, requesterSessionKey, requesterStorePath, requesterAgentId } = entry;
+    if (
+      !delivery ||
+      !["pending", "in_progress"].includes(delivery.status) ||
+      delivery.deliveredAt !== undefined ||
+      delivery.announcedAt !== undefined ||
+      entry.execution.status !== "terminal" ||
+      entry.expectsCompletionMessage !== true ||
+      isSystemEventStoreCurrent(requesterSessionKey, requesterStorePath, requesterAgentId)
+    ) {
+      continue;
+    }
+    if (
+      !blockSubagentCompletionDelivery({
+        subagent: entry,
+        taskId: options.resolveSubagentTask(entry).task?.taskId ?? "",
+        reason: "store replaced",
+        suspendedReason: "permanent_failure",
+        storeReplaced: true,
+      })
+    ) {
+      options.warn("subagent notification store retirement has no current task owner", {
+        runId: entry.runId,
+      });
+      continue;
+    }
+    options.resumedRuns.delete(entry.runId);
+    recordSystemEventStoreReplaced();
+  }
 }
 
 export function beginSubagentCleanup(

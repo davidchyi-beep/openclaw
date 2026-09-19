@@ -704,6 +704,30 @@ describe("session state events", () => {
     });
   });
 
+  it.each(["ambient", "explicit"])("rebinds a replaced %s watch on the next group turn", (kind) => {
+    const database = createDatabaseOptions();
+    if (kind === "explicit") {
+      registerSessionStateWatch({ watcherSessionKey: watcher, targetSessionKey: group }, database);
+    } else {
+      registerMainSessionGroupWatch({ sessionKey: group, agentId: "main" }, database);
+    }
+    const { db } = openOpenClawStateDatabase(database);
+    db.prepare("UPDATE session_watch_cursors SET watcher_store_path = ?").run(
+      "/retired/store.sqlite",
+    );
+    expect(registerMainSessionGroupWatch({ sessionKey: group, agentId: "main" }, database)).toBe(
+      true,
+    );
+    expect(
+      db.prepare("SELECT watcher_store_path, provenance FROM session_watch_cursors").get(),
+    ).toEqual({
+      watcher_store_path: expect.not.stringContaining("/retired/"),
+      provenance: "ambient-group",
+    });
+    recordSessionStateEvent(eventInput({ sessionKey: group, watcherSessionKeys: [] }), database);
+    expect(peekSystemEventEntries(watcher)).toHaveLength(1);
+  });
+
   it("registers one ambient main watcher for a distinct group session", () => {
     const database = createDatabaseOptions();
     expect(

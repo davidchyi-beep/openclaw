@@ -56,8 +56,9 @@ Watcher identity must be an agent-qualified session key. Under `session.scope="g
 
 A watch also records its watcher's physical store. Changing `session.store` does
 not transfer its queued notices to another conversation with the same key. Older
-watches with unknown store provenance retain history but need fresh explicit
-registration before proactive notices resume.
+watches with unknown store provenance retain history but need fresh registration
+before proactive notices resume. The next group turn registers its ambient watch
+against the current store.
 
 Watches clean themselves up: cursor rows expire with signal-log retention, are removed when the watcher session resets, and are removed with either session. A reset that has committed still clears its watches if a later cleanup step fails. There is no unwatch verb in v1.
 

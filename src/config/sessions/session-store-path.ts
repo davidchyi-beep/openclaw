@@ -1,6 +1,9 @@
 import { resolveIdentityPathViaExistingAncestorSync } from "../../infra/boundary-path.js";
-import { publishSystemEventStoreResolver } from "../../infra/system-event-ownership.js";
-import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import {
+  getSystemEventStorePath,
+  publishSystemEventStoreResolver,
+} from "../../infra/system-event-ownership.js";
+import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { getRuntimeConfig } from "../io.js";
 import type { OpenClawConfig } from "../types.openclaw.js";
 import {
@@ -33,6 +36,20 @@ export function publishSystemEventStoreConfig(cfg: OpenClawConfig): void {
     if (!paths.has(key)) paths.set(key, resolveSessionStoreIdentity(scope, cfg));
     return paths.get(key)!;
   });
+}
+
+export function captureSessionWatcherStorePaths(
+  keys: readonly string[] = [],
+  env?: NodeJS.ProcessEnv,
+) {
+  return Object.fromEntries(
+    keys
+      .filter((key) => parseAgentSessionKey(key) != null)
+      .map((sessionKey) => [
+        sessionKey,
+        getSystemEventStorePath(sessionKey) ?? resolveSessionStoreIdentity({ sessionKey, env }),
+      ]),
+  );
 }
 
 export function resolveSessionStorePathForScope(

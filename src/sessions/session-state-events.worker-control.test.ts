@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
-import { parseAgentSessionKey } from "../routing/session-key.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { recordSessionGoalChanged, recordSessionStateEvent } from "./session-state-events.js";
 import type { SessionStateNotice } from "./session-state-events.kernel.js";
@@ -71,7 +70,6 @@ vi.mock("../state/openclaw-state-worker-store.js", () => ({
   runOpenClawStateWorkerOperation: edge.run,
 }));
 vi.mock("./session-state-events.kernel.js", () => ({
-  isNotifiableWatcherKey: (key: string) => parseAgentSessionKey(key) != null,
   recordSessionStateEventInDatabase: edge.nativeRecord,
   pruneSessionStateEventsInDatabase: edge.nativePrune,
 }));

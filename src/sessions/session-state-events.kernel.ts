@@ -1,6 +1,5 @@
 // Shared row mutations for synchronous session signals and the shared-state worker.
 import type { DatabaseSync } from "node:sqlite";
-import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion";
 import type { Insertable, Selectable } from "kysely";
 import {
   executeSqliteQuerySync,
@@ -66,23 +65,6 @@ export type SessionStateEventRecord = {
   summary: string;
   payload?: Record<string, unknown>;
 };
-
-export function rowToSessionStateEvent(row: SessionStateEventRow): SessionStateEventRecord {
-  const payload = row.payload_json ? safeParseJsonRecord(row.payload_json) : undefined;
-  return {
-    sequence: normalizeSqliteNumber(row.sequence) ?? 0,
-    sessionKey: row.session_key,
-    ...(row.session_id ? { sessionId: row.session_id } : {}),
-    agentId: row.agent_id,
-    kind: row.kind as SessionStateEventKind,
-    actorType: row.actor_type as SessionStateActorType,
-    ...(row.actor_id ? { actorId: row.actor_id } : {}),
-    ...(row.run_id ? { runId: row.run_id } : {}),
-    occurredAt: normalizeSqliteNumber(row.occurred_at) ?? 0,
-    summary: row.summary,
-    ...(payload ? { payload } : {}),
-  };
-}
 
 type SessionWatchCursorRow = Selectable<OpenClawStateKyselyDatabase["session_watch_cursors"]>;
 
@@ -180,6 +162,7 @@ export function upsertSeedCursor(params: {
       .onConflict((conflict) =>
         conflict.columns(["watcher_session_key", "target_session_key"]).doUpdateSet({
           watcher_store_path: params.watcherStorePath ?? null,
+          provenance: params.provenance ?? SESSION_WATCH_PROVENANCE_EXPLICIT,
           last_seen_sequence: params.sequence,
           notified_sequence: params.sequence,
           material_sequence: params.sequence,
