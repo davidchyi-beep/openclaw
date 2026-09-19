@@ -72,7 +72,9 @@ const SESSION_STATE_RETENTION_MS = 30 * 24 * 60 * 60_000;
 const SESSION_STATE_MAX_ROWS = 50_000;
 const watcherSchemas = new WeakSet<DatabaseSync>();
 function ensureWatcherStoreColumn(db: DatabaseSync) {
-  if (watcherSchemas.has(db)) return;
+  if (watcherSchemas.has(db)) {
+    return;
+  }
   ensureColumn(db, "session_watch_cursors", "watcher_store_path TEXT");
   deferSqlitePostCommitPublication(db, () => watcherSchemas.add(db));
 }

@@ -170,7 +170,9 @@ function createSessionEventWakeRuntime() {
     !wake.retired &&
     isSystemEventStoreCurrent(wake.sessionKey, wake.sessionStorePath, wake.agentId);
   function retire(wake: PendingWake) {
-    if (wake.retired) return;
+    if (wake.retired) {
+      return;
+    }
     wake.retired = true;
     settle(wake, { status: "skipped", reason: "store-replaced" });
     recordSystemEventStoreReplaced();
@@ -184,7 +186,9 @@ function createSessionEventWakeRuntime() {
           retire(wake);
         }
       }
-      if (!SLOTS.some((slot) => group[slot])) pending.delete(key);
+      if (!SLOTS.some((slot) => group[slot])) {
+        pending.delete(key);
+      }
     }
     for (const owner of active.values()) {
       for (const wake of owner.wakes) {
@@ -363,7 +367,9 @@ function createSessionEventWakeRuntime() {
     const signal = owner.controller.signal;
     try {
       for (const [index, wake] of wakes.entries()) {
-        if (wake.retired) continue;
+        if (wake.retired) {
+          continue;
+        }
         // Busy backoff also owns wakes selected before the current attempt began.
         const blockedUntil = pending.get(key)?.blockedUntil ?? 0;
         if (owner.generation !== generation || blockedUntil > performance.now()) {
@@ -411,7 +417,9 @@ function createSessionEventWakeRuntime() {
             return Promise.race([running, aborted]);
           }, "heartbeat:wake");
         } catch {
-          if (wake.retired) continue;
+          if (wake.retired) {
+            continue;
+          }
           if (owner.generation === generation) {
             retry(wake);
           } else {
@@ -423,7 +431,9 @@ function createSessionEventWakeRuntime() {
             signal.removeEventListener("abort", onAbort);
           }
         }
-        if (wake.retired) continue;
+        if (wake.retired) {
+          continue;
+        }
         if (result.status === "skipped" && shouldRetain(wake, result)) {
           if (owner.generation === generation) {
             retry(wake, result);

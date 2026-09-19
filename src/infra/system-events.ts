@@ -52,7 +52,9 @@ registerSystemEventStoreOwner(SYSTEM_EVENT_QUEUES_KEY, () => {
     const retained = entry.queue.filter((event) =>
       isSystemEventStoreCurrent(key, event.sessionStorePath),
     );
-    if (retained.length === entry.queue.length) continue;
+    if (retained.length === entry.queue.length) {
+      continue;
+    }
     entry.queue = retained;
     resetQueueState(key, entry);
     recordSystemEventStoreReplaced();

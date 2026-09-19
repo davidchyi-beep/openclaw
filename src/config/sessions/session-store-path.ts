@@ -33,7 +33,9 @@ export function publishSystemEventStoreConfig(cfg: OpenClawConfig): void {
     const agentId = resolveAgentIdFromSessionKey(sessionKey, owner);
     const scope = { sessionKey, agentId, env };
     const key = JSON.stringify([agentId, resolveSessionStorePathForScope(scope, cfg)]);
-    if (!paths.has(key)) paths.set(key, resolveSessionStoreIdentity(scope, cfg));
+    if (!paths.has(key)) {
+      paths.set(key, resolveSessionStoreIdentity(scope, cfg));
+    }
     return paths.get(key)!;
   });
 }

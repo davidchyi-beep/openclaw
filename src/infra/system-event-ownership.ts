@@ -42,7 +42,9 @@ export function isSystemEventStoreCurrent(
 /** The accepted Gateway store selection owns retirement; same-store handoff retains its facts. */
 export function publishSystemEventStoreResolver(resolve: typeof stores.resolve): void {
   stores.resolve = resolve;
-  for (const retire of stores.owners.values()) retire();
+  for (const retire of stores.owners.values()) {
+    retire();
+  }
 }
 
 export function registerSystemEventStoreOwner(key: symbol, retire: () => void): void {
