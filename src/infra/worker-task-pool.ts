@@ -154,6 +154,25 @@ export class WorkerTaskPool<Input, Output> {
     };
   }
 
+  /** Join failed native retirements without interrupting healthy tasks. */
+  async retryFailedRetirements(): Promise<void> {
+    const outcomes = await Promise.allSettled(
+      [...this.slots].filter((slot) => slot.retirementFailed).map((slot) => this.retire(slot)),
+    );
+    outcomes.push(...(await Promise.allSettled(this.artifactCleanups)));
+    const errors = outcomes.flatMap((outcome) =>
+      outcome.status === "rejected"
+        ? [toErrorObject(outcome.reason, "worker retirement retry failed")]
+        : [],
+    );
+    const firstError = errors[0];
+    if (firstError) {
+      throw errors.length === 1
+        ? firstError
+        : new AggregateError(errors, "Worker retirement retries failed", { cause: firstError });
+    }
+  }
+
   /** Pause dispatch, settle current work and join native exit before restarting the queue. */
   rotate(): Promise<void> {
     if (this.rotation) {

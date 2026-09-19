@@ -143,6 +143,7 @@ describe("dependency guard script", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.statuses.map((call) => call.body?.state)).toEqual(["failure", "success"]);
     expect(result.stdout).toContain("informational");
+    expect(result.stdout).toContain("- `pnpm-workspace.yaml`\n");
   });
 
   it("does not transfer command approval to a duplicate PR with the same head", () => {
@@ -263,7 +264,7 @@ describe("dependency guard script", () => {
     expect(result.status).toBe(1);
     expect(result.statuses.at(-1)?.body?.state).toBe("failure");
     expect(result.stdout).toContain(
-      "`extensions/old/package.json` moved to `extensions/new/package.json`",
+      "- `extensions/old/package.json`\n- `extensions/new/package.json`\n",
     );
   });
 
@@ -503,17 +504,14 @@ describe("dependency guard script", () => {
 
     expect(body).toContain("<!-- openclaw:dependency-graph-guard -->");
     expect(body).toContain("Maintainer dependency review required");
-    expect(body).toContain("`pnpm-lock.yaml` changed.");
-    expect(body).toContain("`tools/nested/pnpm-lock.yaml` changed.");
-    expect(body).toContain("`package.json` changed `dependencies`.");
+    expect(body).toContain("- `pnpm-lock.yaml`\n");
+    expect(body).toContain("- `tools/nested/pnpm-lock.yaml`\n");
+    expect(body).toContain("- `package.json`\n");
     expect(body).toContain(
       "git checkout 'origin/main' -- 'pnpm-lock.yaml' 'tools/nested/pnpm-lock.yaml'",
     );
     expect(body).toContain("```text\n/allow-dependencies-change\n```");
-    expect(body).toContain("Post the comment after this guard notice identifies the current head");
-    expect(body).toContain("A normal GitHub Approve review does not satisfy this check");
-    expect(body).toContain("SecOps approval is not required");
-    expect(body).toContain(`Current head SHA: \`${headSha}\``);
+    expect(body).toContain(`Current SHA: \`${headSha}\``);
     expect(body).toContain("A later push requires a fresh approval comment.");
   });
 
@@ -674,7 +672,7 @@ describe("dependency guard script", () => {
       "only push deterministic cleanup commits to PR branches that maintainers can modify",
     );
     expect(unsafeBody).toContain("changes package manifest dependency graph fields");
-    expect(unsafeBody).toContain("`package.json` changed `dependencies`");
+    expect(unsafeBody).toContain("- `package.json`\n");
     expect(unsafeBody).toContain("Dependency graph changes require maintainer review");
     expect(mixedBody).toContain("also changes dependency-related files");
     expect(mixedBody).toContain("`patches/example.patch`");

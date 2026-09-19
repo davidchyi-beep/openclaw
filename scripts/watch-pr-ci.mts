@@ -799,10 +799,10 @@ export async function pollUntilDeadline<T>({
 }
 function retry(phase: string, error: unknown) {
   const message = (error instanceof Error ? error.message : String(error)).replaceAll(/\s+/gu, " ");
-  // Run-scoped proxy credentials cannot recover while this process keeps polling.
+  // Revoked proxy credentials cannot recover while this process keeps polling.
   if (/\bProxy Authentication Required\b/iu.test(message)) {
     throw new Error(
-      `PROXY-AUTH-FAILED phase=${phase} status=407 hint="Restart the watcher in an active run with valid proxy authentication; run-scoped credentials expire when their owning run closes."`,
+      `PROXY-AUTH-FAILED phase=${phase} status=407 hint="Restart the watcher in an active run to obtain a new proxy grant."`,
     );
   }
   console.log(`RETRY phase=${phase} error=${message}`);

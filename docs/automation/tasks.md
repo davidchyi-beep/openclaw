@@ -141,7 +141,7 @@ stateDiagram-v2
 | Status      | What it means                                                               |
 | ----------- | --------------------------------------------------------------------------- |
 | `queued`    | Created, waiting for the agent to start                                     |
-| `running`   | Agent turn is actively executing                                            |
+| `running`   | Started, with no terminal lifecycle outcome recorded                        |
 | `succeeded` | Completed successfully                                                      |
 | `failed`    | Completed with an error                                                     |
 | `timed_out` | Exceeded the configured timeout                                             |
@@ -149,6 +149,12 @@ stateDiagram-v2
 | `lost`      | The runtime lost authoritative backing state after a 5-minute grace period  |
 
 Transitions happen automatically - agent run lifecycle events (start, end, error) update the task status; you do not manage it manually.
+
+Stored task status and live execution observation are separate. A task can retain
+`running` status while its execution observation is `waiting` or `unknown`.
+`unknown` means current execution cannot be observed; it does not mean the task
+failed or stopped. A retained subagent registration alone does not prove that
+its execution is running.
 
 Execution and result delivery are separate. A subagent task can remain
 `succeeded` while its `deliveryStatus` is `session_queued` or `failed`. The
@@ -357,7 +363,7 @@ Running work stays in creation order so progress updates do not move rows while 
 
 Select a task to open its **Review** panel beside the parent conversation; the **Tasks** tab keeps the list available. The inspector shows the child's transcript when available, or its complete sanitized input and bounded output, plus timing and tool usage. Background command details preserve the command’s line breaks and arguments; compact task-list labels do not replace the stored command. Their status follows the live process, including quiet commands, and activity updates refresh the open inspector. Current tool activity and the age of the last activity appear separately from the last completed tool. Explicit waits identify children, external results, agent messages, approval, or user input; unavailable runtime detail stays unknown.
 
-For CLI-backed agent tasks, the inspector uses the exact live run to show **Running** or **Queued** even before an activity event arrives or after transient activity is cleared. Run ownership and capacity changes update the inspector automatically. Explicit waits and unavailable-runtime observations still take precedence; a saved task record or an unrelated run in the same session does not prove that execution is active.
+CLI-backed agent tasks use their live run to show **Running** or **Queued** when activity events are missing. The inspector updates automatically as run ownership and queue status change.
 
 Execution and delivery remain separate in the inspector. **Result ready** with **Queued for parent** means the child finished but its result has not been delivered. **Delivered to parent** confirms that handoff. Failed or dismissed delivery keeps the execution result visible, and cancellation and timeout retain their own labels. Stop controls address the selected active task through its execution owner. Child conversations remain view-only with **Open parent session** navigation.
 

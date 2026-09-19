@@ -100,8 +100,11 @@ invalidating chat metadata or broadcasting a change to connected clients.
 
 Repeated model resolution reuses persisted auth rows while the owning database's
 write generation and file identity remain unchanged. Committed auth writes and
-runtime snapshot reloads invalidate those rows; database, WAL, and journal changes
-also invalidate reads from other processes. Scoped overlays, migration refusals,
+runtime snapshot reloads invalidate those rows immediately. Database, WAL, and
+journal identities are probed at most once per 100 ms on warm cache hits; the
+first read at or after that interval detects changes from other processes.
+Hits do not extend this freshness window. Cache misses still check identity
+before and after reading rows. Scoped overlays, migration refusals,
 and personal-account selection still run on each request. Isolated agent scopes
 and private database snapshots do not share this cache. Gateway cache misses reuse
 a read-only child whose lifetime ends at shutdown; each read reacquires its source
@@ -114,8 +117,10 @@ preserving the selected agent and any explicit profile pin. Before retrying, it
 joins matching OAuth refreshes already writing the same auth store, including
 historical peer settlement. This wait has a fixed deadline from the refresh
 owner's start. Cancelling selection stops the wait without cancelling durable
-credential settlement. Continued changes, admission refusals, and cleanup failures
-remain errors.
+credential settlement. The subsequent read owns the refresh outcome. Pending
+refresh profiles remain candidates for model id/mode selection; the OAuth owner
+still settles the refresh before credentials can be used. Continued changes,
+admission refusals, and reader cleanup failures remain errors.
 Workers certify committed SQLite visibility before rows enter the cache. Reads
 with unpublished or trailing WAL frames return normally without being retained.
 

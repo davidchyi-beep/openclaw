@@ -289,6 +289,18 @@ export function readSessionRowParents(
   return parents;
 }
 
+export function sameParents(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const parent of left) {
+    if (!right.has(parent)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function acquireSessionRowEntry(params: {
   row: Row;
   storedEntry: SessionEntry | undefined;
@@ -306,7 +318,11 @@ export function acquireSessionRowEntry(params: {
   }
   const entry = projectGatewaySessionEntry(cfg, storedEntry);
   const parents = readSessionRowParents(row, storedEntry, cfg, context);
-  const changed = !isDeepStrictEqual([storedEntry, parents], [row.storedEntry, row.parents]);
+  // Equal timestamps still need the full metadata comparison.
+  const changed =
+    !sameParents(row.parents, parents) ||
+    !Object.is(storedEntry.updatedAt, row.storedEntry?.updatedAt) ||
+    !isDeepStrictEqual(storedEntry, row.storedEntry);
   if (changed) {
     params.markRelated(row);
   }

@@ -271,6 +271,7 @@ const rootEntries = [
   "scripts/release-plan-producer-core.mts!",
   "scripts/release-plan-producer.mts!",
   "scripts/full-release-publication-observations.mts!",
+  "scripts/release-verify-publish.ts!",
   // Spawned by the agent concurrency benchmark; no static import edge exists.
   "scripts/bench-agent-concurrency-worker.ts!",
   // Spawned by the durable task registry churn benchmark in a fresh GC-enabled process.

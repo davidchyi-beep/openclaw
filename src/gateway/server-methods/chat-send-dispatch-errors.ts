@@ -153,6 +153,28 @@ export function createChatSendDispatchErrorLifecycle(params: {
   let persistDispatchErrorUserTurn: (() => Promise<void>) | undefined;
   let publishDispatchError: (() => void) | undefined;
 
+  const recordAbortedResult = () => {
+    const abortMarker = context.chatRunState.runs.get(clientRunId)?.abortMarker;
+    if (!activeRunAbort.controller.signal.aborted || abortMarker === undefined) {
+      return;
+    }
+    const endedAt = chatAbortMarkerTimestampMs(abortMarker);
+    setGatewayDedupeEntry({
+      dedupe: context.dedupe,
+      key: `chat:${clientRunId}`,
+      session: captureAgentJobSession(jobSessionBinding),
+      entry: {
+        ts: endedAt,
+        ok: true,
+        payload: buildAbortedChatSendPayload({
+          runId: clientRunId,
+          stopReason: activeRunAbort.entry?.abortStopReason ?? "rpc",
+          endedAt,
+        }),
+      },
+    });
+  };
+
   const handleError = async (err: unknown) => {
     const errorMessage = renderFailoverCodeUserCopy(describeFailoverError(err).code) ?? String(err);
     const failureDisposition =
@@ -180,6 +202,8 @@ export function createChatSendDispatchErrorLifecycle(params: {
           sessionKey,
           agentId,
         });
+      } else {
+        recordAbortedResult();
       }
       return;
     }
@@ -198,21 +222,7 @@ export function createChatSendDispatchErrorLifecycle(params: {
       // chat.abort has already emitted the canonical terminal lifecycle and
       // retained its registration until that durable projection settles.
       // A competing restart-admission write can strand an acknowledged abort.
-      const endedAt = chatAbortMarkerTimestampMs(abortMarkerAtDispatchReject);
-      setGatewayDedupeEntry({
-        dedupe: context.dedupe,
-        key: `chat:${clientRunId}`,
-        session: captureAgentJobSession(jobSessionBinding),
-        entry: {
-          ts: endedAt,
-          ok: true,
-          payload: buildAbortedChatSendPayload({
-            runId: clientRunId,
-            stopReason: activeRunAbort.entry?.abortStopReason ?? "rpc",
-            endedAt,
-          }),
-        },
-      });
+      recordAbortedResult();
       context.logGateway.warn(
         `chat.send post-dispatch threw after abort for runId=${clientRunId}: ${formatForLog(err)}`,
       );
@@ -396,5 +406,5 @@ export function createChatSendDispatchErrorLifecycle(params: {
     }
   };
 
-  return { finalize, handleError };
+  return { finalize, handleError, recordAbortedResult };
 }

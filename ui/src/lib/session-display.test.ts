@@ -1,14 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { isCronSessionDisplayKey } from "../../../src/shared/session-list-visibility.ts";
 import {
-  isCronSessionKey,
   resolveChannelSessionInfo,
   resolveSessionDisplayName,
   resolveSessionWorkContext,
   resolveSessionWorkSubtitle,
 } from "./session-display.ts";
 
-describe("isCronSessionKey", () => {
+describe("isCronSessionDisplayKey", () => {
   it.each([
     ["cron:job", true],
     [" CRON:JOB ", true],
@@ -24,7 +24,7 @@ describe("isCronSessionKey", () => {
     ["agent:ops:main", false],
     ["", false],
   ] as const)("retains automation classification for %j", (key, expected) => {
-    expect(isCronSessionKey(key)).toBe(expected);
+    expect(isCronSessionDisplayKey(key)).toBe(expected);
   });
 });
 

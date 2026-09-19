@@ -1,21 +1,40 @@
-import { inspect } from "node:util";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
-import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import { resolveDynamicModelAuthProfile } from "../embedded-agent-runner/model.registry-resolution.js";
-import { OAUTH_REFRESH_CALL_TIMEOUT_MS } from "./constants.js";
-import * as oauthOwner from "./oauth-manager.js";
+import "./oauth-external-auth-passthrough.test-support.js";
+import { getOAuthProviderRuntimeMocks } from "./oauth-common-mocks.test-support.js";
 import { isPendingOAuthRefreshFence } from "./oauth-refresh-marker.js";
+import { resetOAuthProviderRuntimeMocks } from "./oauth-test-utils.js";
+import { resolveApiKeyForProfile } from "./oauth.js";
+import { resetOAuthRefreshQueuesForTest } from "./oauth.test-support.js";
 import { resolveSharedAuthStorePath } from "./path-resolve.js";
-import { loadPersistedSharedAuthProfileStore } from "./persisted.js";
-import { runtimeAuthProfileRowsCache } from "./runtime-snapshots.js";
+import { loadPersistedAuthProfileStore, loadPersistedSharedAuthProfileStore } from "./persisted.js";
+import {
+  clearRuntimeAuthProfileStoreSnapshots,
+  runtimeAuthProfileRowsCache,
+} from "./runtime-snapshots.js";
 import { resolveAuthProfileDatabasePath, writePersistedAuthProfileStoreRaw } from "./sqlite.js";
 import { updateAuthProfileStoreWithLock } from "./store-runtime.js";
 import type { OAuthCredential } from "./types.js";
 import { persistAuthProfileBatch } from "./upsert-with-lock.js";
 
-const profileId = "model-selection:default";
-const provider = "model-selection";
+// The shared OAuth mocks reset the registry before these transitive runtime imports.
+const { withOpenClawTestState } = await import("../../test-utils/openclaw-test-state.js");
+const authProfiles = await import("../auth-profiles.js");
+const { resolveDynamicModelAuthProfile } =
+  await import("../embedded-agent-runner/model.registry-resolution.js");
+
+const {
+  refreshProviderOAuthCredentialWithPluginMock,
+  formatProviderAuthProfileApiKeyWithPluginMock,
+} = getOAuthProviderRuntimeMocks();
+
+vi.mock("../../llm/oauth.js", () => ({
+  getOAuthApiKey: vi.fn(async () => null),
+  getOAuthProviders: () => [{ id: "openai" }],
+}));
+
+const profileId = "openai:model-selection";
+const provider = "openai";
 
 function originalCredential(): OAuthCredential {
   return {
@@ -28,39 +47,48 @@ function originalCredential(): OAuthCredential {
   };
 }
 
-function controlledRefresh(credential: OAuthCredential, options?: { buildFailure: boolean }) {
+function controlledRefresh(credential: OAuthCredential) {
   const entered = createDeferredCore();
   const release = createDeferredCore();
-  const built = createDeferredCore();
   const rotated: OAuthCredential = {
     ...credential,
     access: "synthetic-rotated-access",
     refresh: "synthetic-rotated-refresh",
     expires: Date.now() + 7_200_000,
   };
-  const refreshCredential = vi.fn(async () => {
+  refreshProviderOAuthCredentialWithPluginMock.mockImplementation(async () => {
     entered.resolve();
     await release.promise;
     return rotated;
   });
-  const manager = oauthOwner.createOAuthManager({
-    canRefreshCredential: async () => true,
-    readBootstrapCredential: () => null,
-    buildApiKey: async (_provider, current) => {
-      built.resolve();
-      if (options?.buildFailure) {
-        throw new Error(`Synthetic build failed: ${current.access} ${current.refresh}`);
-      }
-      return current.access;
-    },
-    refreshCredential,
-  });
-  return { manager, entered, release, built, rotated, refreshCredential };
+  return { entered, release, rotated };
 }
+
+function refreshProfile(credential: OAuthCredential, agentDir: string) {
+  return resolveApiKeyForProfile({
+    cfg: {},
+    store: { version: 1, profiles: { [profileId]: credential } },
+    profileId,
+    agentDir,
+    forceRefresh: true,
+  }).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+}
+
+beforeEach(() => {
+  resetOAuthProviderRuntimeMocks({
+    refreshProviderOAuthCredentialWithPluginMock,
+    formatProviderAuthProfileApiKeyWithPluginMock,
+  });
+  resetOAuthRefreshQueuesForTest();
+  clearRuntimeAuthProfileStoreSnapshots();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.useRealTimers();
+  resetOAuthRefreshQueuesForTest();
 });
 
 it.each([
@@ -69,13 +97,12 @@ it.each([
   "historical peer",
   "cancelled",
   "revoked",
-  "rotated again",
-  "removed",
-  "refresh rejected",
-  "rotated build rejected",
-  "adopted settlement rejected",
-  "superseding owner rejected",
-] as const)("joins one durable refresh before model selection: %s", async (scenario) => {
+  "replaced while refreshing",
+  "removed while refreshing",
+  "refresh failed",
+  "rotated during reread",
+  "removed during reread",
+] as const)("selects through the OAuth owner after a real refresh: %s", async (scenario) => {
   await withOpenClawTestState({ label: "oauth-model-selection" }, async (state) => {
     const credential = originalCredential();
     await persistAuthProfileBatch({
@@ -85,7 +112,7 @@ it.each([
     const agentDir = state.agentDir(scenario === "historical peer" ? "peer" : "main");
     if (scenario === "historical peer") {
       await state.writeAuthProfiles({ version: 1, profiles: { [profileId]: credential } }, "peer");
-      // Auth credential semantics retains historical-peer settlement; current writes deduplicate copies.
+      // Preserve an upgraded historical copy; current writes deduplicate these peers.
       writePersistedAuthProfileStoreRaw(
         { version: 1, profiles: { [profileId]: credential } },
         agentDir,
@@ -95,12 +122,7 @@ it.each([
       scenario === "historical peer"
         ? resolveAuthProfileDatabasePath(agentDir)
         : resolveSharedAuthStorePath();
-    const refresh = controlledRefresh(credential, {
-      buildFailure:
-        scenario === "rotated build rejected" ||
-        scenario === "adopted settlement rejected" ||
-        scenario === "superseding owner rejected",
-    });
+    const refresh = controlledRefresh(credential);
     const reads = [0, 1].map(() => ({
       entered: createDeferredCore(),
       release: createDeferredCore(),
@@ -124,8 +146,8 @@ it.each([
         },
       };
     });
-    const join = oauthOwner.waitForOwnedOAuthRefreshes;
-    vi.spyOn(oauthOwner, "waitForOwnedOAuthRefreshes").mockImplementation((params) => {
+    const join = authProfiles.waitForActiveOAuthRefreshes;
+    vi.spyOn(authProfiles, "waitForActiveOAuthRefreshes").mockImplementation((params) => {
       const pending = join(params);
       joining.resolve();
       return pending;
@@ -137,7 +159,8 @@ it.each([
       provider,
       modelId: "synthetic-model",
       agentDir,
-      authProfileId: scenario === "automatic" ? undefined : profileId,
+      authProfileId:
+        scenario === "automatic" || scenario === "refresh failed" ? undefined : profileId,
       abortSignal: controller.signal,
       assertCurrent: () => {
         if (revoked) {
@@ -148,25 +171,19 @@ it.each([
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
     );
-    let refreshing: ReturnType<typeof refresh.manager.resolveOAuthAccess> | undefined;
+    let refreshing: ReturnType<typeof refreshProfile> | undefined;
     try {
       expect(await Promise.race([reads[0]!.entered.promise, selecting])).toBeUndefined();
-      refreshing = refresh.manager.resolveOAuthAccess({
-        store: { version: 1, profiles: { [profileId]: credential } },
-        profileId,
-        credential,
-        agentDir: state.agentDir(),
-        cfg: {},
-        forceRefresh: true,
-      });
+      refreshing = refreshProfile(credential, state.agentDir());
       expect(await Promise.race([refresh.entered.promise, refreshing])).toBeUndefined();
       reads[0]!.release.resolve();
-      expect(await Promise.race([joining.promise, selecting])).toBeUndefined();
+      expect(
+        await Promise.race([joining.promise, reads[1]!.entered.promise, selecting]),
+      ).toBeUndefined();
       expect(readCount).toBe(1);
       if (scenario === "cancelled") {
         controller.abort(refusal);
-        const cancelled = await selecting;
-        expect(cancelled).toMatchObject({
+        expect(await selecting).toMatchObject({
           ok: false,
           error: { name: "AbortError", cause: refusal },
         });
@@ -175,58 +192,50 @@ it.each([
         expect(pending?.type === "oauth" && isPendingOAuthRefreshFence(pending)).toBe(true);
       } else if (scenario === "revoked") {
         revoked = true;
-      }
-      if (scenario === "refresh rejected") {
-        const failedRefresh = expect(refreshing).rejects.toMatchObject({
-          name: "OAuthManagerRefreshError",
-        });
-        refresh.release.reject(new Error("Synthetic refresh settlement failure"));
-        expect(await selecting).toMatchObject({
-          ok: false,
-          error: { message: "Synthetic refresh settlement failure" },
-        });
-        await failedRefresh;
-        expect(readCount).toBe(1);
-        return;
-      }
-      if (
-        scenario === "rotated build rejected" ||
-        scenario === "adopted settlement rejected" ||
-        scenario === "superseding owner rejected"
+      } else if (
+        scenario === "replaced while refreshing" ||
+        scenario === "removed while refreshing"
       ) {
-        const failedRefresh = expect(refreshing).rejects.toMatchObject({
-          name: "OAuthManagerRefreshError",
+        await updateAuthProfileStoreWithLock({
+          profileId,
+          updater: (store) => {
+            if (scenario === "removed while refreshing") {
+              delete store.profiles[profileId];
+            } else {
+              store.profiles[profileId] = {
+                type: "api_key",
+                provider,
+                key: "synthetic-replacement-key",
+              };
+            }
+            return true;
+          },
         });
-        const adopted = {
-          ...refresh.rotated,
-          access: "synthetic-adopted-access",
-          refresh: "synthetic-adopted-refresh",
-          expires: Date.now() + 10_800_000,
-        };
-        if (scenario !== "rotated build rejected") {
-          await persistAuthProfileBatch({
-            stateDir: state.stateDir,
-            profiles: [{ profileId, credential: adopted }],
-            allowOAuthGenerationReplacement: true,
-          });
-        }
-        if (scenario === "superseding owner rejected") {
-          refresh.release.reject(new Error("Synthetic provider failure before adoption"));
-        } else {
-          refresh.release.resolve();
-        }
-        const result = await selecting;
-        await failedRefresh;
-        expect(result.ok).toBe(false);
-        expect(inspect(result, { depth: 8 })).not.toContain(refresh.rotated.access);
-        expect(inspect(result, { depth: 8 })).not.toContain(refresh.rotated.refresh);
-        expect(inspect(result, { depth: 8 })).not.toContain(adopted.access);
-        expect(inspect(result, { depth: 8 })).not.toContain(adopted.refresh);
-        expect(readCount).toBe(1);
-        return;
       }
-      refresh.release.resolve();
-      expect((await refreshing)?.credential).toEqual(refresh.rotated);
+      if (scenario === "refresh failed") {
+        refresh.release.reject(new Error("Synthetic refresh settlement failure"));
+      } else {
+        refresh.release.resolve();
+      }
+      const refreshResult = await refreshing;
+      if (
+        scenario !== "replaced while refreshing" &&
+        scenario !== "removed while refreshing" &&
+        scenario !== "refresh failed"
+      ) {
+        expect(refreshResult).toMatchObject({ ok: true, value: { credential: refresh.rotated } });
+        expect(loadPersistedSharedAuthProfileStore(state.env)?.profiles[profileId]).toEqual(
+          refresh.rotated,
+        );
+      } else if (scenario === "refresh failed") {
+        expect(refreshResult).toMatchObject({
+          ok: false,
+          error: {
+            name: "OAuthRefreshFailureError",
+            cause: { name: "OAuthManagerRefreshError" },
+          },
+        });
+      }
       if (scenario === "cancelled" || scenario === "revoked") {
         const result = await selecting;
         if (scenario === "revoked") {
@@ -236,11 +245,14 @@ it.each([
         return;
       }
       expect(await Promise.race([reads[1]!.entered.promise, selecting])).toBeUndefined();
-      if (scenario === "rotated again" || scenario === "removed") {
+      if (scenario === "historical peer") {
+        expect(loadPersistedAuthProfileStore(agentDir)?.profiles[profileId]).toBeUndefined();
+      }
+      if (scenario === "rotated during reread" || scenario === "removed during reread") {
         await updateAuthProfileStoreWithLock({
           profileId,
           updater: (store) => {
-            if (scenario === "removed") {
+            if (scenario === "removed during reread") {
               delete store.profiles[profileId];
             } else {
               store.profiles[profileId] = {
@@ -254,19 +266,30 @@ it.each([
       }
       reads[1]!.release.resolve();
       const result = await selecting;
-      if (scenario === "rotated again" || scenario === "removed") {
+      if (scenario === "rotated during reread" || scenario === "removed during reread") {
         expect(result).toMatchObject({
           ok: false,
           error: { name: "AuthProfileRuntimeReadStaleError" },
         });
+      } else if (scenario === "removed while refreshing") {
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: "selected_auth_profile_unavailable", profileId },
+        });
       } else {
         expect(result).toEqual({
           ok: true,
-          value: { authProfileId: profileId, authProfileMode: "oauth" },
+          value:
+            scenario === "refresh failed"
+              ? {}
+              : {
+                  authProfileId: profileId,
+                  authProfileMode: scenario === "replaced while refreshing" ? "api_key" : "oauth",
+                },
         });
       }
       expect(readCount).toBe(2);
-      expect(refresh.refreshCredential).toHaveBeenCalledOnce();
+      expect(refreshProviderOAuthCredentialWithPluginMock).toHaveBeenCalledOnce();
     } finally {
       refresh.release.resolve();
       for (const read of reads) {
@@ -277,70 +300,93 @@ it.each([
   });
 });
 
-it("keeps durable settlement owned after caller timeout without renewing waiter deadlines", async () => {
-  await withOpenClawTestState({ label: "oauth-model-selection-timeout" }, async (state) => {
+it("does not join another physical database's refresh for the same provider and profile", async () => {
+  await withOpenClawTestState({ label: "oauth-model-selection-isolation" }, async (state) => {
     const credential = originalCredential();
     await persistAuthProfileBatch({
       stateDir: state.stateDir,
       profiles: [{ profileId, credential }],
     });
+    const agentDir = state.agentDir("independent");
+    const independent: OAuthCredential = {
+      ...credential,
+      access: "synthetic-independent-access",
+      refresh: "synthetic-independent-refresh",
+      accountId: "synthetic-independent-account",
+      copyToAgents: true,
+    };
+    await state.writeAuthProfiles(
+      { version: 1, profiles: { [profileId]: independent } },
+      "independent",
+    );
+    const databasePath = resolveAuthProfileDatabasePath(agentDir);
+    expect(databasePath).not.toBe(resolveSharedAuthStorePath());
     const refresh = controlledRefresh(credential);
-    const databasePath = resolveSharedAuthStorePath();
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    const refreshing = refresh.manager
-      .resolveOAuthAccess({
-        store: { version: 1, profiles: { [profileId]: credential } },
-        profileId,
-        credential,
-        agentDir: state.agentDir(),
-        cfg: {},
-        forceRefresh: true,
-      })
-      .then(
-        (value) => ({ value }),
-        (error: unknown) => ({ error }),
-      );
+    const firstRead = { entered: createDeferredCore(), release: createDeferredCore() };
+    const prepare = runtimeAuthProfileRowsCache.prepare.bind(runtimeAuthProfileRowsCache);
+    let readCount = 0;
+    vi.spyOn(runtimeAuthProfileRowsCache, "prepare").mockImplementation((db, reader) => {
+      const prepared = prepare(db, reader);
+      if (db !== databasePath || readCount++ > 0) {
+        return prepared;
+      }
+      return {
+        ...prepared,
+        async read() {
+          const rows = await prepared.read();
+          firstRead.entered.resolve();
+          await firstRead.release.promise;
+          return rows;
+        },
+      };
+    });
+    let selected: unknown;
+    const selecting = resolveDynamicModelAuthProfile({
+      provider,
+      modelId: "synthetic-model",
+      agentDir,
+      authProfileId: profileId,
+    }).then(
+      (value) => (selected = { ok: true, value }),
+      (error: unknown) => (selected = { ok: false, error }),
+    );
+    let refreshing: ReturnType<typeof refreshProfile> | undefined;
     try {
-      await refresh.entered.promise;
-      await oauthOwner.waitForOwnedOAuthRefreshes({
-        databasePath: state.statePath("unrelated.sqlite"),
-        providers: [provider],
+      expect(await Promise.race([firstRead.entered.promise, selecting])).toBeUndefined();
+      refreshing = refreshProfile(credential, state.agentDir());
+      expect(await Promise.race([refresh.entered.promise, refreshing])).toBeUndefined();
+      await updateAuthProfileStoreWithLock({
+        agentDir,
+        profileId,
+        updater: (store) => {
+          store.profiles[profileId] = {
+            ...independent,
+            access: "synthetic-new-independent-access",
+          };
+          return true;
+        },
       });
-      await oauthOwner.waitForOwnedOAuthRefreshes({ databasePath, providers: ["other-provider"] });
-      await oauthOwner.waitForOwnedOAuthRefreshes({
-        databasePath,
-        providers: [provider],
-        profileId: "other-profile",
+      firstRead.release.resolve();
+      await expect
+        .poll(() => selected, {
+          message: "Selection must finish while the unrelated database's refresh is held",
+        })
+        .toEqual({
+          ok: true,
+          value: { authProfileId: profileId, authProfileMode: "oauth" },
+        });
+      const pending = loadPersistedSharedAuthProfileStore(state.env)?.profiles[profileId];
+      expect(pending?.type === "oauth" && isPendingOAuthRefreshFence(pending)).toBe(true);
+      expect(loadPersistedAuthProfileStore(agentDir)?.profiles[profileId]).toEqual({
+        ...independent,
+        access: "synthetic-new-independent-access",
       });
-      const firstWait = oauthOwner.waitForOwnedOAuthRefreshes({
-        databasePath,
-        providers: [provider],
-      });
-      const firstRefusal = expect(firstWait).rejects.toThrow("exceeded hard timeout");
-      await vi.advanceTimersByTimeAsync(OAUTH_REFRESH_CALL_TIMEOUT_MS);
-      await firstRefusal;
-      expect(await refreshing).toMatchObject({ error: { name: "OAuthManagerRefreshError" } });
-      const lateWait = oauthOwner.waitForOwnedOAuthRefreshes({
-        databasePath,
-        providers: [provider],
-      });
-      const lateRefusal = expect(lateWait).rejects.toThrow("exceeded hard timeout");
-      await vi.advanceTimersByTimeAsync(0);
-      await lateRefusal;
-      vi.useRealTimers();
-      refresh.release.resolve();
-      await refresh.built.promise;
-      await Promise.resolve();
-      expect(loadPersistedSharedAuthProfileStore(state.env)?.profiles[profileId]).toEqual(
-        refresh.rotated,
-      );
-      await oauthOwner.waitForOwnedOAuthRefreshes({ databasePath, providers: [provider] });
-      expect(refresh.refreshCredential).toHaveBeenCalledOnce();
+      expect(readCount).toBe(2);
+      expect(refreshProviderOAuthCredentialWithPluginMock).toHaveBeenCalledOnce();
     } finally {
-      vi.useRealTimers();
+      firstRead.release.resolve();
       refresh.release.resolve();
-      await refreshing;
-      await refresh.built.promise;
+      await Promise.allSettled([selecting, ...(refreshing ? [refreshing] : [])]);
     }
   });
 });

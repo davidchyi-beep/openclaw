@@ -462,23 +462,17 @@ jobs:
           jq -e \
             --arg tag_sha "$tag_sha" \
             --arg run_id "$FULL_RELEASE_VALIDATION_RUN_ID" \
-            --arg run_attempt "$FULL_RELEASE_VALIDATION_RUN_ATTEMPT" \
-            --arg stable_soak_waiver "$STABLE_SOAK_WAIVER" '
+            --arg run_attempt "$FULL_RELEASE_VALIDATION_RUN_ATTEMPT" '
             .workflowName == "Full Release Validation" and
             .runId == $run_id and
             .runAttempt == $run_attempt and
-            .targetSha == $tag_sha and
-            .rerunGroup == "all" and
-            (.runReleaseSoak == "true" or ($stable_soak_waiver | test("[^[:space:]]"))) and
-            (.controls.performanceBlocking == true or ($stable_soak_waiver | test("[^[:space:]]"))) and
-            .childRuns.productPerformance.conclusion == "success"
+            .targetSha == $tag_sha
           ' "$manifest_dir/$manifest_asset" >/dev/null || {
             echo "Full Release Validation manifest does not contain the required stable release controls." >&2
             exit 1
           }
-          if ! jq -e '.controls.performanceBlocking == true' "$manifest_dir/$manifest_asset" >/dev/null; then
-            echo "::warning::Blocking product performance waived by operator stable soak waiver; advisory performance child passed."
-          fi
+          node .closeout-tooling/scripts/lib/release-publish-gates.mts \
+            --consumer stable-closeout --manifest "$manifest_dir/$manifest_asset"
 
           recovery_evidence="$manifest_dir/openclaw-${evidence_version}-postpublish-evidence.json"
           if [[ "$ALLOW_FAILED_PUBLISH_RECOVERY" == "true" ]]; then

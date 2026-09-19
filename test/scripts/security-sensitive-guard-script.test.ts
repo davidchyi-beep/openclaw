@@ -38,6 +38,7 @@ const notice = {
 const approval = {
   id: 11,
   user: approver,
+  html_url: "https://github.com/openclaw/openclaw/pull/7#issuecomment-11",
   body: "/allow-security-sensitive-change",
   created_at: "2026-01-01T00:01:00Z",
   updated_at: "2026-01-01T00:01:00Z",
@@ -168,7 +169,7 @@ describe("security-sensitive guard entry point", () => {
     const result = runGuard({ authorRole });
     expect(result.status, result.stderr).toBe(0);
     expect(result.statuses).toEqual(["failure", "success"]);
-    expect(result.comment).toContain("Informational");
+    expect(result.comment).toContain("informational");
   });
 
   it.each([
@@ -330,7 +331,8 @@ describe("security-sensitive guard entry point", () => {
       const result = runGuard({ comments: [notice, approval], approverRole, event: commentEvent });
       expect(result.status, result.stderr).toBe(0);
       expect(result.statuses).toEqual(["failure", "success"]);
-      expect(result.comment).toContain("@maintainer approved");
+      expect(result.comment).toContain("- Maintainer: @maintainer");
+      expect(result.comment).toContain(`- Approval comment: ${approval.html_url}`);
       expect(
         result.requests
           .filter((request) => request.path.includes("/statuses/"))

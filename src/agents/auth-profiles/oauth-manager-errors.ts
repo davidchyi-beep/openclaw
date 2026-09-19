@@ -124,7 +124,7 @@ export class OAuthManagerRefreshError extends OAuthRefreshFailureError {
   }
 }
 
-export function collectOAuthCredentialSecrets(
+function collectOAuthCredentialSecrets(
   ...credentials: Array<OAuthCredential | undefined>
 ): string[] {
   const secrets = new Set<string>();
@@ -186,7 +186,7 @@ function formatRedactedOAuthRefreshError(error: unknown, secrets: string[]): str
   return redactSensitiveText(redactOAuthCredentialSecrets(formatRawErrorMessage(error), secrets));
 }
 
-export function createRedactedOAuthRefreshCause(cause: unknown, secrets: string[]): Error {
+function createRedactedOAuthRefreshCause(cause: unknown, secrets: string[]): Error {
   if (cause instanceof AggregateError) {
     const errors = cause.errors.map((error) => createRedactedOAuthRefreshCause(error, secrets));
     const sanitized = new AggregateError(

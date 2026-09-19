@@ -14646,7 +14646,7 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
       uses: UPLOAD_ARTIFACT_V7,
       with: {
         name: "control-ui-test-timeout-${{ matrix.shard }}-${{ github.run_attempt }}",
-        path: test.env.OPENCLAW_UI_E2E_DIAGNOSTIC_DIR,
+        path: `${test.env.OPENCLAW_UI_E2E_DIAGNOSTIC_DIR}/failure-*/failure.public.json`,
         "if-no-files-found": "ignore",
         "retention-days": 7,
       },
@@ -14748,7 +14748,7 @@ printf '%s\n' "\${CURL_SUCCESS_IP:-203.0.113.7}"
               forwarded.push(args);
               expect(childEnv.OPENCLAW_TEST_PROJECTS_PARALLEL).toBe("1");
               expect(childEnv.OPENCLAW_UI_E2E_DIAGNOSTIC_DIR).toBe(
-                resolveValue(diagnostics.with.path),
+                resolveValue(test.env.OPENCLAW_UI_E2E_DIAGNOSTIC_DIR),
               );
               return 0;
             },
@@ -19624,10 +19624,16 @@ it.each(["publish", "promote"])(
         runInNewContext(finalize.if.replace(/^\$\{\{|\}\}$/gu, ""), {
           always: () => true,
           contains: (value: string, part: string) => value.includes(part),
-          inputs: { tag: "v2026.9.4", prepared_plugins: "", publish_openclaw_npm: true },
+          inputs: {
+            tag: "v2026.9.4",
+            prepared_plugins: "",
+            publish_openclaw_npm: true,
+            finalize_release_before_docker: false,
+          },
           needs: {
             publish: { result: "success" },
             publish_docker: { result: "success" },
+            finalize_github_release_before_docker: { result: "skipped" },
             verify: { result: "success" },
             [approvalId]: { result },
           },

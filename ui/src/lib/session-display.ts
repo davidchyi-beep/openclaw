@@ -3,6 +3,7 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import { sliceUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { isCronSessionDisplayKey } from "../../../src/shared/session-list-visibility.ts";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
 
@@ -350,19 +351,9 @@ export function resolveSessionDisplayName(
   return withAccountDisambiguator(resolveNamedOrFallback(), accountId);
 }
 
-export function isCronSessionKey(key: string): boolean {
-  const normalized = normalizeLowercaseStringOrEmpty(key);
-  const parts = normalized.split(":").filter(Boolean);
-  // Display classification also accepts whitespace-only owners; routing rejects them.
-  return (
-    normalized.startsWith("cron:") ||
-    (normalized.startsWith("agent:") && parts.length >= 4 && parts[2] === "cron")
-  );
-}
-
 // Wire kinds exclude cron; labels, sorting and grouping share this display classification.
 export function resolveSessionDisplayKind(
   row: GatewaySessionRow,
 ): GatewaySessionRow["kind"] | "cron" {
-  return isCronSessionKey(row.key) ? "cron" : row.kind;
+  return isCronSessionDisplayKey(row.key) ? "cron" : row.kind;
 }

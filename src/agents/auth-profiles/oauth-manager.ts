@@ -6,10 +6,7 @@ import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion"
  */
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { normalizeSecretInputString } from "../../config/types.secrets.js";
-import { resolvePathViaExistingAncestorSync } from "../../infra/boundary-path.js";
 import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
-import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
-import { createDeferredCore } from "../../shared/deferred.js";
 import { isUserModelAuthProfileId } from "../../state/user-model-account-id.js";
 import { OAUTH_REFRESH_CALL_TIMEOUT_MS, authProfilesLog } from "./constants.js";
 import { hasUsableOAuthCredential } from "./credential-state.js";
@@ -17,8 +14,6 @@ import { isPersistedExternalCliAuthProfile } from "./external-cli-sync.js";
 import { shouldMirrorRefreshedOAuthCredential } from "./oauth-identity.js";
 import {
   appendOAuthRefreshCleanupErrors,
-  collectOAuthCredentialSecrets,
-  createRedactedOAuthRefreshCause,
   OAuthManagerRefreshError,
 } from "./oauth-manager-errors.js";
 import { withOAuthProfileLock } from "./oauth-profile-lock.js";
@@ -46,6 +41,11 @@ import {
   settleOAuthRefreshPeerClaims,
   type OAuthRefreshPeerClaim,
 } from "./oauth-refresh-peers.js";
+import {
+  createOAuthRefreshQueue,
+  type OAuthRefreshTracking,
+  type OAuthRefreshWaitParams,
+} from "./oauth-refresh-queue.js";
 import {
   hasMatchingOAuthIdentity,
   isSafeOAuthOwnerRefreshResult,
@@ -90,47 +90,6 @@ type ResolvedOAuthAccess = {
   apiKey: string;
   credential: OAuthCredential;
 };
-
-type OAuthRefreshSettlement = {
-  provider: string;
-  profileId: string;
-  databasePaths: Set<string>;
-  deadline: number;
-  settled: Promise<void>;
-};
-type OAuthRefreshTracking = {
-  beforeWrite: (databasePath: string) => void;
-  retainSettlement: (settlement: Promise<unknown>) => void;
-};
-const activeOAuthRefreshes = new Set<OAuthRefreshSettlement>();
-
-/** Join only the refreshes already mutating this read's physical auth owner. */
-export async function waitForOwnedOAuthRefreshes(params: {
-  databasePath: string;
-  providers: readonly string[];
-  profileId?: string;
-  abortSignal?: AbortSignal;
-}): Promise<void> {
-  params.abortSignal?.throwIfAborted();
-  const databasePath = resolvePathViaExistingAncestorSync(params.databasePath);
-  const refreshes = [...activeOAuthRefreshes].filter(
-    (refresh) =>
-      refresh.databasePaths.has(databasePath) &&
-      params.providers.includes(refresh.provider) &&
-      (params.profileId === undefined || refresh.profileId === params.profileId),
-  );
-  await Promise.all(
-    refreshes.map((refresh) =>
-      observeOAuthRefreshSettlement(
-        `refreshOAuthCredential(${refresh.provider})`,
-        OAUTH_REFRESH_CALL_TIMEOUT_MS,
-        refresh.settled,
-        { deadline: refresh.deadline, signal: params.abortSignal },
-      ),
-    ),
-  );
-  params.abortSignal?.throwIfAborted();
-}
 
 const oauthRefreshRecoveryBuildFailures = new WeakSet<Error>();
 
@@ -246,11 +205,7 @@ export function createOAuthManager(adapter: OAuthManagerAdapter) {
     return null;
   }
 
-  let refreshQueue = new KeyedAsyncQueue();
-
-  function refreshQueueKey(provider: string, profileId: string): string {
-    return `${provider}\u0000${profileId}`;
-  }
+  let refreshQueue = createOAuthRefreshQueue();
 
   class OAuthSettlementCredentialValidationError extends Error {
     constructor(cause: unknown, cleanupErrors: readonly unknown[] = []) {
@@ -1181,78 +1136,11 @@ export function createOAuthManager(adapter: OAuthManagerAdapter) {
       }
     })();
     // The caller deadline observes the owner; it never cancels durable settlement.
-    tracking.retainSettlement(settlement);
+    tracking.trackSettlement(settlement);
     return await observeOAuthRefreshSettlement(
       `refreshOAuthCredential(${claim.credential.provider})`,
       OAUTH_REFRESH_CALL_TIMEOUT_MS,
       settlement,
-    );
-  }
-
-  async function refreshOAuthTokenQueued(
-    params: Parameters<typeof refreshOAuthTokenWithLock>[0],
-  ): Promise<ResolvedOAuthAccess | null> {
-    return await refreshQueue.enqueue(
-      refreshQueueKey(params.provider, params.profileId),
-      async () => {
-        const completed = createDeferredCore();
-        const secrets = new Set(collectOAuthCredentialSecrets(params.attemptedCredential));
-        const refresh: OAuthRefreshSettlement = {
-          provider: params.provider,
-          profileId: params.profileId,
-          databasePaths: new Set(),
-          deadline: Date.now() + OAUTH_REFRESH_CALL_TIMEOUT_MS,
-          settled: completed.promise,
-        };
-        void completed.promise.catch(() => {});
-        let durableSettlementRetained = false;
-        const finish = () => {
-          activeOAuthRefreshes.delete(refresh);
-          completed.resolve();
-        };
-        const fail = (error: unknown) => {
-          activeOAuthRefreshes.delete(refresh);
-          completed.reject(
-            createRedactedOAuthRefreshCause(
-              error,
-              [...secrets].toSorted((left, right) => right.length - left.length),
-            ),
-          );
-        };
-        try {
-          const result = await refreshOAuthTokenWithLock(
-            {
-              ...params,
-              validateCredential(credential) {
-                // Validation and token builds may throw with freshly minted or adopted credentials.
-                for (const secret of collectOAuthCredentialSecrets(credential)) {
-                  secrets.add(secret);
-                }
-                params.validateCredential?.(credential);
-              },
-            },
-            {
-              beforeWrite(databasePath) {
-                refresh.databasePaths.add(resolvePathViaExistingAncestorSync(databasePath));
-                activeOAuthRefreshes.add(refresh);
-              },
-              retainSettlement(settlement) {
-                durableSettlementRetained = true;
-                void settlement.then(finish, fail);
-              },
-            },
-          );
-          if (!durableSettlementRetained) {
-            finish();
-          }
-          return result;
-        } catch (error) {
-          if (!durableSettlementRetained) {
-            fail(error);
-          }
-          throw error;
-        }
-      },
     );
   }
 
@@ -1323,19 +1211,23 @@ export function createOAuthManager(adapter: OAuthManagerAdapter) {
     }
 
     try {
-      const refreshed = await refreshOAuthTokenQueued({
-        profileId: params.profileId,
-        provider: credential.provider,
-        agentDir: params.agentDir,
-        cfg: params.cfg,
-        forceRefresh: params.forceRefresh,
-        attemptedCredential: effectiveCredential,
-        attemptedCredentials,
-        bootstrapCredential,
-        bootstrapBaseCredential: adoptedCredential,
-        validateCredential: params.validateCredential,
-      });
-      return refreshed;
+      return await refreshQueue.enqueue(credential.provider, params.profileId, (tracking) =>
+        refreshOAuthTokenWithLock(
+          {
+            profileId: params.profileId,
+            provider: credential.provider,
+            agentDir: params.agentDir,
+            cfg: params.cfg,
+            forceRefresh: params.forceRefresh,
+            attemptedCredential: effectiveCredential,
+            attemptedCredentials,
+            bootstrapCredential,
+            bootstrapBaseCredential: adoptedCredential,
+            validateCredential: params.validateCredential,
+          },
+          tracking,
+        ),
+      );
     } catch (error) {
       let refreshError: unknown = error;
       let recoveryBuildFailed =
@@ -1427,11 +1319,14 @@ export function createOAuthManager(adapter: OAuthManagerAdapter) {
   }
 
   function resetRefreshQueuesForTest(): void {
-    refreshQueue = new KeyedAsyncQueue();
+    refreshQueue = createOAuthRefreshQueue();
   }
 
   return {
     resolveOAuthAccess,
+    waitForActiveOAuthRefreshes(params: OAuthRefreshWaitParams) {
+      return refreshQueue.waitForActive(params);
+    },
     resetRefreshQueuesForTest,
   };
 }
