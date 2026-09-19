@@ -319,6 +319,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
       delivered: false,
       path: "none",
       error: "store replaced",
+      storeReplaced: true,
       disposition: "intentional_non_delivery",
     });
     return true;

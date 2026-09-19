@@ -11,7 +11,12 @@ import {
 import { ensureTaskRegistryReady, getTaskById } from "../../../tasks/runtime-internal.js";
 import { publishTaskRecordAfterAtomicStore } from "../../../tasks/task-registry.js";
 import { resetTaskRegistryForTests } from "../../../tasks/task-runtime.test-helpers.js";
-import { settleSubagentCompletionDelivery } from "../completion/subagent-completion-admission.store.js";
+import { maybeWakeRequesterAfterAllChildrenSettled } from "../announce/subagent-announce.requester-settle-wake.js";
+import {
+  publishCommittedRecords,
+  settleRequesterCompletionBatch,
+  settleSubagentCompletionDelivery,
+} from "../completion/subagent-completion-admission.store.js";
 import {
   failedRecords,
   records,
@@ -45,6 +50,71 @@ afterEach(() => {
   closeOpenClawStateDatabaseForTest();
   vi.unstubAllEnvs();
   vi.useRealTimers();
+});
+
+it("suspends an original-store child that completes after replacement without a new alert", async () => {
+  const input = records();
+  input.subagent.requesterStorePath = "original-store";
+  input.subagent.delivery = {
+    status: "pending",
+    payload: loadPendingFinalDeliveryPayload(input.subagent),
+  };
+  input.subagent.requesterSettleWake = {
+    status: "pending",
+    attemptCount: 0,
+    requesterYieldBatch: true,
+    rearmGeneration: 1,
+    batchRunIds: [input.subagent.runId],
+  };
+  const running = structuredClone(input);
+  running.subagent.execution = { status: "running", startedAt: input.subagent.createdAt };
+  running.subagent.completion = { required: true };
+  running.task.status = "running";
+  running.task.endedAt = undefined;
+  running.task.terminalOutcome = undefined;
+  const database = openOpenClawStateDatabase();
+  settleSubagentCompletionDelivery({ subagent: running.subagent, task: running.task });
+  publishCommittedRecords(running.subagent, running.task);
+  publishSystemEventStoreResolver(() => "replacement-store");
+  expect(subagentRuns.get(input.subagent.runId)?.execution.status).toBe("running");
+
+  settleSubagentCompletionDelivery({ subagent: input.subagent, task: input.task });
+  publishCommittedRecords(input.subagent, input.task);
+  const settledEntry = expectDefined(subagentRuns.get(input.subagent.runId), "late terminal child");
+  expect(
+    await maybeWakeRequesterAfterAllChildrenSettled({
+      requesterSessionKey: input.subagent.requesterSessionKey,
+      settledEntry,
+      transitionBatch: () => {
+        throw new Error("a replaced store must not admit a delivery attempt");
+      },
+      completeBatch: (batch, _generation, outcome, onCommitted) => {
+        settleRequesterCompletionBatch({
+          entries: batch.map((subagent) => ({ subagent, taskId: input.task.taskId })),
+          outcome: expectDefined(outcome, "store replacement disposition"),
+          isCurrent: () => batch.every((entry) => subagentRuns.get(entry.runId) === entry),
+        });
+        onCommitted?.();
+      },
+    }),
+  ).toBe(false);
+  expect(getTaskById(input.task.taskId)).toMatchObject({
+    status: "succeeded",
+    terminalOutcome: "succeeded",
+  });
+  expect(
+    database.db
+      .prepare("SELECT id FROM delivery_queue_entries WHERE entry_kind = 'systemEvent'")
+      .all(),
+  ).toEqual([]);
+  expect(loadSubagentRegistryFromSqlite().get(input.subagent.runId)).toMatchObject({
+    completion: { resultText: "canonical result" },
+    delivery: {
+      status: "suspended",
+      disposition: "intentional_non_delivery",
+      lastError: "store replaced",
+    },
+  });
 });
 
 it.each(["same", "replaced", "restore", "failed", "delivered"] as const)(

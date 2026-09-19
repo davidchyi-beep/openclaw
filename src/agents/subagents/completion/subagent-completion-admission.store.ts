@@ -639,6 +639,8 @@ export function settleRequesterCompletionBatch(params: {
                 reason:
                   params.outcome.error ?? params.outcome.reason ?? "requester settle wake failed",
                 disposition: params.outcome.disposition,
+                storeReplaced: params.outcome.storeReplaced,
+                suspendedReason: params.outcome.storeReplaced ? "permanent_failure" : undefined,
               },
               now,
               subagent,
