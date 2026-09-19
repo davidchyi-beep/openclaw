@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -28,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DateFormat
 import java.util.Date
-import java.util.Locale
 
 /** A bubble describes its own recorded call, never the latest session/run snapshot. */
 internal fun chatMessageMetadata(message: ChatMessage): List<Pair<String, String>> {
@@ -62,10 +62,11 @@ internal fun ChatMessageTimestamp(
   modifier: Modifier = Modifier,
 ) {
   val density = LocalDensity.current
+  val locale = LocalConfiguration.current.locales[0]
   var expanded by remember(timestampMs, metadata) { mutableStateOf(false) }
   val date = Date(timestampMs)
-  val label = DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault()).format(date)
-  val absolute = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.LONG, Locale.getDefault()).format(date)
+  val label = DateFormat.getTimeInstance(DateFormat.SHORT, locale).format(date)
+  val absolute = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.LONG, locale).format(date)
   Box(modifier) {
     Text(
       text = label,
