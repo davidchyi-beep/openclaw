@@ -21,7 +21,10 @@ import {
 } from "../../infra/update-run-ledger.js";
 import { defaultRuntime } from "../../runtime.js";
 import { finishUpdate, type FinishUpdateParams } from "./update-command-post-update.js";
-import { taskRecovery } from "./update-command-post-update.test-support.js";
+import {
+  registerUnverifiedDefinitionRecoveryTest,
+  taskRecovery,
+} from "./update-command-post-update.test-support.js";
 import { repairUpdateService } from "./update-command-repair-service.js";
 import { revalidateManagedGatewayServiceAfterUpdate } from "./update-command-service-maintenance.js";
 import { inspectManagedGatewayServiceBeforeUpdate } from "./update-command-service-plan.js";
@@ -327,6 +330,12 @@ describe("post-activation repair after rollback refusal or failure", () => {
       }
     },
   );
+
+  registerUnverifiedDefinitionRecoveryTest({
+    fixture,
+    makeHome: () => dirs.make("update-definition-recovery-unverified-"),
+    mocks,
+  });
 
   it("terminalizes a failed final native read after current-core plugin parking", async () => {
     const params = fixture();
