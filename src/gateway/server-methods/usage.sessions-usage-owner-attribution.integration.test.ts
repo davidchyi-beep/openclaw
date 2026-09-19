@@ -28,6 +28,102 @@ import { createDirectChatContext } from "../server-chat.agent-events.test-helper
 import type { RespondFn } from "./types.js";
 import { usageHandlers } from "./usage.js";
 
+function usageMessage(tokens: number, timestamp: number): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: "Recorded usage" }],
+    api: "openai-responses",
+    provider: "fixture",
+    model: "usage-model",
+    stopReason: "stop",
+    timestamp,
+    usage: {
+      input: tokens,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: tokens,
+      cost: { input: 0.01, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.01 },
+    },
+  };
+}
+
+it.each([
+  {
+    name: "generated title",
+    displayName: "Usage worktree",
+    label: undefined,
+    expected: "Usage worktree",
+  },
+  {
+    name: "explicit rename",
+    displayName: "Generated title",
+    label: "My renamed chat",
+    expected: "My renamed chat",
+  },
+  { name: "unnamed session", displayName: undefined, label: undefined, expected: undefined },
+])(
+  "projects the $name through overview and selected usage",
+  async ({ displayName, label, expected }) => {
+    const state = await createOpenClawTestState({ label: "usage-session-title" });
+    try {
+      await state.writeConfig({
+        agents: { ownership: "explicit", entries: { main: {} } },
+        plugins: { enabled: false },
+      });
+      const config = getRuntimeConfig();
+      const key = "agent:main:dashboard:usage-title";
+      const sessionId = "usage-title-instance";
+      const timestamp = Date.now();
+      const scope = {
+        agentId: "main",
+        sessionKey: key,
+        sessionId,
+        storePath: path.join(state.sessionsDir(), "sessions.json"),
+      };
+      await upsertSessionEntryCore(scope, { sessionId, updatedAt: timestamp, displayName, label });
+      await persistSessionTranscriptTurn(scope, {
+        cwd: state.workspaceDir,
+        updateMode: "none",
+        messages: [{ message: usageMessage(17, timestamp), now: timestamp }],
+      });
+      // Wait for the real accounting projection before testing its presentation metadata.
+      await loadSessionCostSummary({ agentId: "main", sessionId, sessionTarget: scope, config });
+
+      for (const specificKey of [undefined, key]) {
+        const respond = vi.fn();
+        await expectDefined(
+          usageHandlers["sessions.usage"],
+          "usage handler",
+        )({
+          params: {
+            ...(specificKey ? { key: specificKey } : {}),
+            range: "all",
+            groupBy: "instance",
+          },
+          context: { getRuntimeConfig: () => config },
+          respond,
+        } as unknown as Parameters<(typeof usageHandlers)["sessions.usage"]>[0]);
+        expect(respond).toHaveBeenCalledOnce();
+        const [ok, payload] = expectDefined(respond.mock.calls[0], "usage response");
+        expect(ok).toBe(true);
+        const result = payload as SessionsUsageResult;
+        expect(result.sessions).toHaveLength(1);
+        expect(result.sessions[0]).toMatchObject({
+          key,
+          sessionId,
+          agentId: "main",
+          label: expected,
+          usage: { totalTokens: 17, totalCost: 0.01 },
+        });
+        expect(result.totals).toMatchObject({ totalTokens: 17, totalCost: 0.01 });
+      }
+    } finally {
+      await state.cleanup();
+    }
+  },
+);
+
 it("hydrates context metadata only for emitted usage rows while aggregating every match", async () => {
   const state = await createOpenClawTestState({ label: "usage-page-metadata" });
   try {
@@ -288,7 +384,8 @@ it.each([
           await upsertSessionEntryCore(scope, {
             sessionId,
             updatedAt: Date.now(),
-            label: `${agentId} chat`,
+            displayName: `${agentId} generated chat`,
+            ...(agentId === "main" ? {} : { label: `${agentId} chat` }),
           });
         }
         await persistSessionTranscriptTurn(scope, {
@@ -320,10 +417,14 @@ it.each([
       expect(ok).toBe(true);
       const result = payload as SessionsUsageResult;
       expect(result.sessions).toHaveLength(2);
-      expect(result.sessions.map(({ key, agentId }) => ({ key, agentId }))).toEqual(
+      expect(result.sessions.map(({ key, agentId, label }) => ({ key, agentId, label }))).toEqual(
         expect.arrayContaining([
-          { key: mainKey, agentId: "main" },
-          { key: opusKey ?? `agent:${owner}:${sessionId}`, agentId: owner },
+          { key: mainKey, agentId: "main", label: "main generated chat" },
+          {
+            key: opusKey ?? `agent:${owner}:${sessionId}`,
+            agentId: owner,
+            label: opusKey ? `${owner} chat` : undefined,
+          },
         ]),
       );
       if (opusKey) {
@@ -422,25 +523,8 @@ it.each([
       });
       const mainScope = scopeFor("main", mainKey);
       const opusScope = scopeFor("opus", opusKey);
-      const usageMessage = (tokens: number): AssistantMessage => ({
-        role: "assistant",
-        content: [{ type: "text", text: "Recorded usage" }],
-        api: "openai-responses",
-        provider: "fixture",
-        model: "usage-model",
-        stopReason: "stop",
-        timestamp,
-        usage: {
-          input: tokens,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: tokens,
-          cost: { input: 0.01, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.01 },
-        },
-      });
       const writeArtifact = async (tokens: number) => {
-        archiveManager.appendMessage(usageMessage(tokens));
+        archiveManager.appendMessage(usageMessage(tokens, timestamp));
         const content = [archiveManager.getHeader(), ...archiveManager.getEntries()]
           .map((entry) => JSON.stringify(entry))
           .join("\n");
@@ -464,7 +548,7 @@ it.each([
       ] as const) {
         await upsertSessionEntryCore(scope, {
           sessionId,
-          label: `${scope.agentId} chat`,
+          displayName: `${scope.agentId} chat`,
           updatedAt: timestamp,
         });
         if (artifact && scope.agentId === "main" && sessionId === firstId) {
@@ -476,7 +560,7 @@ it.each([
           {
             cwd: state.workspaceDir,
             updateMode: "none",
-            messages: [{ message: usageMessage(tokens), now: timestamp }],
+            messages: [{ message: usageMessage(tokens, timestamp), now: timestamp }],
           },
         );
       }

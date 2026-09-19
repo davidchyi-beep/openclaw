@@ -247,6 +247,8 @@ const rootEntries = [
   // OpenGrep rule tests read these as static source inputs; they are never executed.
   "security/opengrep/rules/ghsa-82g8-464f-2mv7/skill-env.js!",
   "security/opengrep/rules/ghsa-82g8-464f-2mv7/skill-env.ts!",
+  "security/opengrep/rules/ghsa-fv94-qvg8-xqpw/ssh-sandbox-upload.js!",
+  "security/opengrep/rules/ghsa-fv94-qvg8-xqpw/ssh-sandbox-upload.ts!",
   "openclaw.mjs!",
   "src/index.ts!",
   "src/entry.ts!",
