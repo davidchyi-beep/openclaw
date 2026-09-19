@@ -1498,6 +1498,7 @@ internal val nativeStringResourceIds: Map<String, Int> =
     "The previous network request is still stopping. Check your connection, then retry." to R.string.native_592eaad263c3b12d,
     "The result for \$slug is unknown. Reconnect, refresh Skills, then retry; the Gateway safely joins a matching install that is still running." to R.string.native_a6a20a23827b4cbd,
     "The workspace is stopped. Showing its saved changes, if available." to R.string.native_b192d681a0f8be90,
+    "Theme" to R.string.native_efb52e7172b77731,
     "Theme and translated Android text." to R.string.native_dc72ce68e7c53d61,
     "Theme family" to R.string.native_e02d72e84239e20a,
     "Thinking" to R.string.native_a20d12c5e9c428c3,

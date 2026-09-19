@@ -1690,6 +1690,7 @@
     <string name="native_ef33b48c555123fc" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"ไม่สามารถลงชื่อเข้าใช้ให้เสร็จสมบูรณ์ได้ โปรดตรวจสอบขั้นตอนการลงชื่อเข้าใช้แล้วลองอีกครั้ง"</string>
     <string name="native_ef7b085f8c78687e" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"แชร์ตำแหน่งที่แม่นยำขณะเปิดใช้งานตำแหน่ง"</string>
     <string name="native_efac890edfc315fe" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"Mobile UI"</string>
+    <string name="native_efb52e7172b77731" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"Theme"</string>
     <string name="native_eff936b9e59f7d1b" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"Gateway ยังคงแสดงว่าการอนุมัตินี้อยู่ระหว่างรอดำเนินการ โปรดตรวจสอบก่อนลองอีกครั้ง"</string>
     <string name="native_effe3c323ebd1339" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"สิ้นสุดบันทึกเสียง"</string>
     <string name="native_f0406a0e7eb17426" formatted="false" tools:ignore="Typos,TypographyDashes,TypographyEllipsis">"ไม่ได้รับอนุญาต"</string>
