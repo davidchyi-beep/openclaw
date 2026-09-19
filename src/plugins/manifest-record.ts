@@ -13,6 +13,7 @@ import type {
   BundledChannelConfigCollector,
   PluginManifestRecord,
 } from "./manifest-registry.types.js";
+import { loadManifestThemeDefinitions } from "./manifest-themes.js";
 import type { PluginDiagnostic } from "./manifest-types.js";
 import {
   type OpenClawPackageManifest,
@@ -483,6 +484,14 @@ export function buildPluginManifestRecord(params: {
     qaRunners: params.manifest.qaRunners,
     dashboard: params.manifest.dashboard,
     controlUi: params.manifest.controlUi,
+    themes: params.manifest.themes,
+    themeDefinitions: loadManifestThemeDefinitions({
+      pluginId,
+      rootDir: params.candidate.rootDir,
+      themes: params.manifest.themes,
+      rejectHardlinks: params.rejectHardlinks,
+      diagnostics: params.diagnostics,
+    }),
     mcpServers: params.manifest.mcpServers,
     skills: params.manifest.skills ?? [],
     settingsFiles: [],
