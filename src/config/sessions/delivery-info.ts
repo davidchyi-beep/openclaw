@@ -6,7 +6,6 @@ import {
 } from "../../gateway/session-store-key.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { requiresFoldedSessionKeyAliasProof } from "../../sessions/session-key-utils.js";
-import { SessionMetadataUnavailableError } from "../../state/openclaw-agent-db-read-error.js";
 import {
   deliveryContextFromSession,
   hasDeliveryTargetFields,
@@ -398,15 +397,7 @@ function loadDeliverySessionEntry(
       }
     | undefined;
   for (const [storeIndex, storePath] of lookup.storePaths.entries()) {
-    let store: DeliveryStoreRead;
-    try {
-      store = readStore(storePath, storeIndex);
-    } catch (error) {
-      if (error instanceof SessionMetadataUnavailableError && error.reason === "database-missing") {
-        continue;
-      }
-      throw error;
-    }
+    const store = readStore(storePath, storeIndex);
     const entry = findSessionEntryInStore(store, lookup.sessionKeys);
     const baseEntry = findSessionEntryInStore(store, lookup.baseKeys);
     if (!entry && !baseEntry) {

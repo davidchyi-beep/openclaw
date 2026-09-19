@@ -9,7 +9,10 @@ import {
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
-import { getOpenClawAgentDatabaseIfOpen } from "../state/openclaw-agent-db.js";
+import {
+  getOpenClawAgentDatabaseIfOpen,
+  resolveOpenClawAgentSqlitePath,
+} from "../state/openclaw-agent-db.js";
 import {
   createChannelTestPluginBase,
   createDirectOutboundTestAdapter,
@@ -79,7 +82,7 @@ async function withCurrentOrigin(
 
 describe("current cron delivery origin", () => {
   it.each(["single", "batch"] as const)(
-    "records unavailable metadata in %s previews without suppressing healthy jobs",
+    "resolves %s previews without routing history beside healthy jobs",
     async (mode) => {
       await withCurrentOrigin(
         { source: { channel: "telegram", to: "recipient" } },
@@ -87,6 +90,8 @@ describe("current cron delivery origin", () => {
           const cfg: OpenClawConfig = {
             agents: { entries: { main: {}, missing: {} } },
           };
+          const databasePath = resolveOpenClawAgentSqlitePath({ agentId: "missing" });
+          expect(fs.existsSync(databasePath)).toBe(false);
           const missing = makeCronJob({
             id: "missing-current",
             agentId: "missing",
@@ -111,9 +116,10 @@ describe("current cron delivery origin", () => {
               sessionKey: explicit.sessionKey,
               sessionTarget: explicit.sessionTarget,
             }),
-          ).rejects.toMatchObject({
-            name: "SessionMetadataUnavailableError",
-            reason: "database-missing",
+          ).resolves.toMatchObject({
+            ok: true,
+            channel: "telegram",
+            to: "explicit-recipient",
           });
 
           const previews =
@@ -127,23 +133,25 @@ describe("current cron delivery origin", () => {
                     ]),
                   ),
                 );
-          const unavailable = {
-            label: "announce -> last",
-            detail:
-              "delivery preview unavailable: Session metadata unavailable (database-missing); retry after the agent store is ready.",
-          };
           expect(previews).toEqual({
             healthy: {
               label: "announce -> telegram:recipient",
               detail: `resolved from last, session ${job.sessionKey}`,
             },
-            "missing-current": unavailable,
-            "missing-last": unavailable,
+            "missing-current": {
+              label: "announce -> current session",
+              detail: "commits to this conversation (no external channel route)",
+            },
+            "missing-last": {
+              label: "announce -> last",
+              detail: "last -> no route, will fail-closed: Delivering to telegram requires target",
+            },
             "missing-explicit": {
-              ...unavailable,
               label: "announce -> telegram:explicit-recipient",
+              detail: "explicit",
             },
           });
+          expect(fs.existsSync(databasePath)).toBe(false);
         },
       );
     },

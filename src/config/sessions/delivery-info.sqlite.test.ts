@@ -37,21 +37,17 @@ async function seedFallback(state: OpenClawTestState) {
   };
 }
 
-it("recovers a same-agent route past an absent primary without weakening exact metadata reads", async () => {
+it("recovers a same-agent route past an empty absent primary", async () => {
   await withOpenClawTestState({ label: "delivery-missing-primary" }, async (state) => {
     const { cfg, primaryPath, readPrimary } = await seedFallback(state);
-    expect(readPrimary()).toMatchObject([
-      { ok: false, error: { name: "SessionMetadataUnavailableError", reason: "database-missing" } },
-    ]);
+    expect(readPrimary()).toMatchObject([{ ok: true, value: [] }]);
 
     const scalar = extractDeliveryInfo(sessionKey, { cfg });
     const batch = extractDeliveryInfoBatch([sessionKey], { cfg });
 
     expect(fs.existsSync(primaryPath)).toBe(false);
     expect({ scalar, batch }).toEqual({ scalar: expected, batch: [expected] });
-    expect(readPrimary()).toMatchObject([
-      { ok: false, error: { name: "SessionMetadataUnavailableError", reason: "database-missing" } },
-    ]);
+    expect(readPrimary()).toMatchObject([{ ok: true, value: [] }]);
   });
 });
 

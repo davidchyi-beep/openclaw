@@ -5,7 +5,7 @@ import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 
 export class SessionMetadataUnavailableError extends Error {
   constructor(
-    readonly reason: "database-missing" | "schema-missing" | "table-missing",
+    readonly reason: "schema-missing" | "table-missing",
     options?: ErrorOptions,
     readonly missingTables: readonly string[] = [],
   ) {

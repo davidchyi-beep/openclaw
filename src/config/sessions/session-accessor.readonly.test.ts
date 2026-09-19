@@ -237,7 +237,7 @@ describe("session accessor readonly listing", () => {
     expect(isOpenClawAgentDatabaseOpen(resolveOpenClawAgentSqlitePath(listScope))).toBe(false);
   });
 
-  it("keeps missing database probes read-only and preserves exact-read unavailability", () => {
+  it("keeps missing database probes read-only with empty exact results", () => {
     const stateDir = makeTempDir(tempDirs, "openclaw-session-readonly-missing-");
     const env = { OPENCLAW_STATE_DIR: stateDir };
     const agentId = "worker-1";
@@ -250,9 +250,7 @@ describe("session accessor readonly listing", () => {
       loadExactSessionEntryCandidatesReadOnlyBatch([
         { agentId, env, sessionKeys: [`agent:${agentId}:main`] },
       ]),
-    ).toMatchObject([
-      { ok: false, error: { name: "SessionMetadataUnavailableError", reason: "database-missing" } },
-    ]);
+    ).toMatchObject([{ ok: true, value: [] }]);
     expect(
       readSessionStoreSummaryReadOnly(
         { agentId, env },

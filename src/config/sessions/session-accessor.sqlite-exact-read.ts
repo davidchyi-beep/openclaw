@@ -274,7 +274,12 @@ export function loadExactSessionEntryCandidatesReadOnlyBatch(
         group.options,
       );
       if (!read.found) {
-        throw new SessionMetadataUnavailableError(read.reason);
+        if (read.reason !== "database-missing") {
+          throw new SessionMetadataUnavailableError(read.reason);
+        }
+        for (const { index } of group.requests) {
+          results[index] = ok([]);
+        }
       }
     } catch (error) {
       for (const { index } of group.requests) {

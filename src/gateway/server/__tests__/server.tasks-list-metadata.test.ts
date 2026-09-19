@@ -232,11 +232,15 @@ test("preserves task pagination during metadata patches but invalidates new requ
           "tasks.list",
           pageParams,
         );
-        expect(unavailable.payload).toBeUndefined();
-        expect(unavailable).toMatchObject({
-          ok: false,
-          error: { code: "UNAVAILABLE", message: expect.stringContaining(reason) },
-        });
+        if (reason === "database-missing") {
+          expect(unavailable).toMatchObject({ ok: true, payload: { tasks: [] } });
+        } else {
+          expect(unavailable.payload).toBeUndefined();
+          expect(unavailable).toMatchObject({
+            ok: false,
+            error: { code: "UNAVAILABLE", message: expect.stringContaining(reason) },
+          });
+        }
         expect(unavailableStore).toHaveBeenCalled();
       } finally {
         unavailableStore.mockRestore();

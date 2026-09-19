@@ -26,7 +26,7 @@ describe("exact SQLite session batch availability", () => {
     { reason: "schema-missing" },
     { reason: "table-missing", table: "session_key_contract" },
     { reason: "table-missing", table: "session_nodes" },
-  ] as const)("preserves $reason ($table) as a failed read for every requested key", (outcome) => {
+  ] as const)("preserves $reason ($table) outcomes for every requested key", (outcome) => {
     const { reason } = outcome;
     const scope = {
       agentId: "main",
@@ -68,11 +68,9 @@ describe("exact SQLite session batch availability", () => {
             missingTables: [outcome.table],
           }
         : { name: "SessionMetadataUnavailableError", reason };
-    expect(results).toMatchObject([
-      { ok: false, error },
-      { ok: true, value: [] },
-      { ok: false, error },
-    ]);
+    const expected = reason === "database-missing" ? { ok: true, value: [] } : { ok: false, error };
+    expect(results).toMatchObject([expected, { ok: true, value: [] }, expected]);
+    expect(fs.existsSync(databasePath)).toBe(reason !== "database-missing");
   });
 
   it("keeps a present empty store and an empty key request successful", () => {

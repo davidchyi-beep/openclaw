@@ -469,11 +469,20 @@ describe("usage archive identity", () => {
 
           const cacheLookup = { agentId, config, sessions: [{ sessionId, sessionFile }] };
           expect(readSessionCostUsageRollupRows(agentId)).toEqual([]);
-          expect(await loadSessionCostSummariesFromCache(cacheLookup)).toMatchObject({
-            summaries: [null],
-            cacheStatus: { status: "refreshing", cachedFiles: 0, pendingFiles: 1 },
-          });
-          await expect.poll(() => readSessionCostUsageRollupRows(agentId)).toHaveLength(1);
+          const work = new AsyncWorkScope();
+          try {
+            expect(
+              await work.track(() => loadSessionCostSummariesFromCache(cacheLookup)),
+            ).toMatchObject({
+              summaries: [null],
+              cacheStatus: { status: "refreshing", cachedFiles: 0, pendingFiles: 1 },
+            });
+            await work.runWhenIdle(() => {
+              expect(readSessionCostUsageRollupRows(agentId)).toHaveLength(1);
+            });
+          } finally {
+            await work.drain();
+          }
           expect(
             await loadSessionCostSummariesFromCache({ ...cacheLookup, requestRefresh: false }),
           ).toMatchObject({
