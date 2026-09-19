@@ -24,6 +24,15 @@ OpenClaw Android is the officially released Google Play app. It connects to an O
 
 Long-press a row on the **Threads** page and choose **Color**, then select a swatch or **Default** to clear it. The eight colors are red, blue, green, yellow, purple, orange, pink, and cyan. Colored sessions show a narrow leading stripe in the sidebar and Threads page, plus a colored ring around the agent avatar in the open chat header. Unset colors add no indicator. Colors sync through the Gateway and remain visible in the local session cache while offline.
 
+## Image previews in Chat
+
+Tap an image to open the full image. Pinch to zoom up to 4× and drag to pan;
+double-tap the image for 2.5× zoom or to reset. The bottom controls zoom out,
+show the current percentage (tap to reset), and zoom in. Close with **X**,
+Android Back, or a stationary tap on empty background. Image taps, drags,
+and two-finger gestures do not dismiss the preview. Rotation or recreation
+refits the image rather than restoring offsets from the old viewport.
+
 ## Completed work in Chat
 
 In the app's own conversation, agent main sessions, and dashboard conversations,
