@@ -130,9 +130,16 @@ async function runQaPackagedBootstrap<T>(
 
 function createQaPackagedBootstrapEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const bootstrapEnv = { ...env };
-  delete bootstrapEnv.OPENCLAW_BUILD_PRIVATE_QA;
-  delete bootstrapEnv.OPENCLAW_ENABLE_PRIVATE_QA_CLI;
-  delete bootstrapEnv.NODE_OPTIONS;
+  const gatewayOnlyKeys = new Set([
+    "OPENCLAW_BUILD_PRIVATE_QA",
+    "OPENCLAW_ENABLE_PRIVATE_QA_CLI",
+    "NODE_OPTIONS",
+  ]);
+  for (const envKey of Object.keys(bootstrapEnv)) {
+    if (gatewayOnlyKeys.has(envKey.toUpperCase())) {
+      delete bootstrapEnv[envKey];
+    }
+  }
   return bootstrapEnv;
 }
 

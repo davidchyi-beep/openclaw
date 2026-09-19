@@ -30,6 +30,7 @@ type FixtureRecord = {
   buildPrivateQa?: string | null;
   enablePrivateQaCli?: string | null;
   nodeOptions?: string | null;
+  gatewayOnlyEnvKeys?: string[];
 };
 
 // The fixture never contacts a provider or stores auth. Its independent failsafes
@@ -58,6 +59,9 @@ if (command === "descendant") {
     buildPrivateQa: process.env.OPENCLAW_BUILD_PRIVATE_QA ?? null,
     enablePrivateQaCli: process.env.OPENCLAW_ENABLE_PRIVATE_QA_CLI ?? null,
     nodeOptions: process.env.NODE_OPTIONS ?? null,
+    gatewayOnlyEnvKeys: Object.keys(process.env)
+      .filter((key) => ["OPENCLAW_BUILD_PRIVATE_QA", "OPENCLAW_ENABLE_PRIVATE_QA_CLI", "NODE_OPTIONS"].includes(key.toUpperCase()))
+      .sort(),
   });
   if (current === phase) {
     process.on("SIGTERM", () => {
@@ -260,7 +264,13 @@ describe.skipIf(process.platform === "win32")("packaged QA bootstrap lifetime", 
       providerMode: "mock-openai",
       controlUiEnabled: false,
       transportBaseUrl: "http://127.0.0.1:1",
-      runtimeEnvPatch: { NODE_OPTIONS: "--no-warnings", QA_CLI_MARKER: "gateway" },
+      runtimeEnvPatch: {
+        NODE_OPTIONS: "--no-warnings",
+        Node_Options: "--trace-warnings",
+        OpenClaw_Build_Private_QA: "foreign",
+        OpenClaw_Enable_Private_QA_Cli: "foreign",
+        QA_CLI_MARKER: "gateway",
+      },
     });
     const env = {
       gateway,
@@ -297,23 +307,28 @@ describe.skipIf(process.platform === "win32")("packaged QA bootstrap lifetime", 
       enablePrivateQaCli,
       nodeOptions,
     });
-    expect(
-      f
-        .records()
-        .filter((entry) => ["openai", "anthropic", "help", "repair"].includes(entry.kind))
-        .map(runtimeEnv),
-    ).toEqual(Array(4).fill({ buildPrivateQa: null, enablePrivateQaCli: null, nodeOptions: null }));
+    const bootstrapRecords = f
+      .records()
+      .filter((entry) => ["openai", "anthropic", "help", "repair"].includes(entry.kind));
+    expect(bootstrapRecords.map(runtimeEnv)).toEqual(
+      Array.from({ length: 4 }, () => ({
+        buildPrivateQa: null,
+        enablePrivateQaCli: null,
+        nodeOptions: null,
+      })),
+    );
+    expect(bootstrapRecords.map((entry) => entry.gatewayOnlyEnvKeys)).toEqual([[], [], [], []]);
     expect(
       f
         .records()
         .filter((entry) => entry.kind === "gateway" || entry.kind === "message")
         .map(runtimeEnv),
     ).toEqual(
-      Array(3).fill({
+      Array.from({ length: 3 }, () => ({
         buildPrivateQa: "1",
         enablePrivateQaCli: "1",
         nodeOptions: "--no-warnings",
-      }),
+      })),
     );
     expect(isQaPosixProcessGroupAlive(gateway.pid!)).toBe(true);
   });
