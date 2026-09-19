@@ -54,11 +54,13 @@ export async function selectUpdateRepairInference(params: {
       const configuredModel = params.config.models?.providers?.[route.provider]?.models.find(
         (entry) => entry.id === route.model,
       );
-      if (
-        route.runner !== "embedded" ||
-        !supportsModelTools(model ?? {}) ||
-        !supportsModelTools(configuredModel ?? {})
-      ) {
+      // Note: the previous hard gate on `supportsModelTools(model)` excluded any
+      // provider whose `compat.supportsTools` flag is unset or false, even when
+      // the route is otherwise authenticated and the live `verify()` turn
+      // below succeeds. That over-rejection is the failure mode tracked in
+      // openclaw/openclaw#152759. Tool-capability is now exercised at verify
+      // time instead of via static metadata, so the gate is removed.
+      if (route.runner !== "embedded") {
         eligibility.set(route, false);
         return false;
       }
