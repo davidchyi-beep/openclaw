@@ -3,7 +3,7 @@ import { safeParseJsonRecord } from "@openclaw/normalization-core/json-coercion"
 import { loadSessionEntryReadOnly } from "../config/sessions/session-accessor.js";
 import {
   captureSessionWatcherStorePaths,
-  resolveSessionStoreIdentity,
+  resolvePhysicalSessionStorePath,
 } from "../config/sessions/session-store-path.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import { executeSqliteQuerySync, executeSqliteQueryTakeFirstSync } from "../infra/kysely-sync.js";
@@ -556,7 +556,7 @@ export function registerSessionStateWatch(
   }
   const now = options.now ?? Date.now();
   try {
-    const watcherStorePath = resolveSessionStoreIdentity({
+    const watcherStorePath = resolvePhysicalSessionStorePath({
       sessionKey: params.watcherSessionKey,
       env: options.env,
     });
@@ -629,7 +629,7 @@ export function registerMainSessionGroupWatch(
   }
   const now = options.now ?? Date.now();
   try {
-    const watcherStorePath = resolveSessionStoreIdentity({
+    const watcherStorePath = resolvePhysicalSessionStorePath({
       sessionKey: watcherSessionKey,
       env: options.env,
     });

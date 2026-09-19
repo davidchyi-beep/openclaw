@@ -20,6 +20,7 @@ import {
 } from "../../../utils/message-channel.js";
 import { buildAnnounceIdempotencyKey } from "../../announce-idempotency.js";
 import { resolveSubagentRequesterAgentId } from "../../subagent-requester-owner.js";
+import { selectConnectedSettledSubagentWave } from "../registry/subagent-registry-queries.js";
 import {
   countActiveDescendantRuns,
   getLatestLiveSubagentRunByChildSessionKey,
@@ -73,65 +74,6 @@ const REQUESTER_SETTLE_WAKE_MAX_AMBIGUOUS_REPLAYS = 3;
 const REQUESTER_SETTLE_WAKE_MAX_DEFERRALS = 10;
 const REQUESTER_SETTLE_WAKE_RETRY_DELAYS_MS = [30_000, 120_000] as const;
 const activeRequesterSettleWakeBatches = new Map<string, () => boolean>();
-
-function buildConnectedSettledWave(
-  candidates: readonly SubagentRunRecord[],
-  settledEntry: SubagentRunRecord,
-): SubagentRunRecord[] {
-  const targetIndex = candidates.findIndex((entry) => entry.runId === settledEntry.runId);
-  const target = candidates[targetIndex];
-  if (!target) {
-    return [];
-  }
-
-  const sorted = candidates
-    .map((entry, originalIndex) => ({
-      entry,
-      originalIndex,
-      endedAt:
-        typeof entry.execution.endedAt === "number"
-          ? entry.execution.endedAt
-          : Number.MAX_SAFE_INTEGER,
-    }))
-    .toSorted(
-      (a, b) =>
-        a.entry.createdAt - b.entry.createdAt ||
-        a.endedAt - b.endedAt ||
-        a.originalIndex - b.originalIndex,
-    );
-  const first = sorted[0];
-  if (!first) {
-    return [];
-  }
-
-  let componentStart = 0;
-  let componentEnd = first.endedAt;
-  let containsTarget = first.originalIndex === targetIndex;
-  for (let index = 1; index <= sorted.length; index += 1) {
-    const next = sorted[index];
-    // Interval-graph components are contiguous after sorting by spawn time.
-    // Spawn time, rather than execution admission, keeps capacity-queued siblings together.
-    if (!next || next.entry.createdAt > componentEnd) {
-      if (containsTarget) {
-        const component = sorted
-          .slice(componentStart, index)
-          .filter((item) => item.originalIndex !== targetIndex)
-          .toSorted((a, b) => a.originalIndex - b.originalIndex);
-        return [target, ...component.map((item) => item.entry)];
-      }
-      if (!next) {
-        break;
-      }
-      componentStart = index;
-      componentEnd = next.endedAt;
-      containsTarget = next.originalIndex === targetIndex;
-      continue;
-    }
-    componentEnd = Math.max(componentEnd, next.endedAt);
-    containsTarget ||= next.originalIndex === targetIndex;
-  }
-  return [];
-}
 
 function readSharedBatchState(batch: readonly SubagentRunRecord[]): RequesterSettleWakeBatchState {
   const states = batch
@@ -287,7 +229,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(
   } else {
     // An unfrozen wave cannot absorb a different requester-yield generation.
     // Its frozen cohort still owns its deadline, retry budget, and visible final.
-    settledBatch = buildConnectedSettledWave(
+    settledBatch = selectConnectedSettledSubagentWave(
       requesterRuns.filter(
         (entry) =>
           entry.requesterSettleWake &&

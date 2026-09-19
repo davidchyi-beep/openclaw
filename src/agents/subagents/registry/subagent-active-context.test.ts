@@ -3,7 +3,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
-import { resolveSessionStoreIdentity } from "../../../config/sessions/session-store-path.js";
+import { resolvePhysicalSessionStorePath } from "../../../config/sessions/session-store-path.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { SubagentRunRecordOverrides } from "../../subagent-test-fixtures.test-helpers.js";
 import { buildActiveSubagentRuntimeContext } from "./subagent-active-context.js";
@@ -34,7 +34,10 @@ describe("buildActiveSubagentRuntimeContext", () => {
         session: { store: path.join(directory, "original.sqlite") },
       };
       const controllerSessionKey = "agent:main:main";
-      const storePath = resolveSessionStoreIdentity({ sessionKey: controllerSessionKey }, original);
+      const storePath = resolvePhysicalSessionStorePath(
+        { sessionKey: controllerSessionKey },
+        original,
+      );
       addSubagentRunForTests({
         runId: "old-child-result",
         childSessionKey: "agent:main:subagent:old-child",

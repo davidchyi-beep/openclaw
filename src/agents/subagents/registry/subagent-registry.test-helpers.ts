@@ -21,7 +21,7 @@ export {
   shouldIgnorePostCompletionAnnounceForSession,
 } from "./subagent-registry-read.js";
 
-import { resolveSessionStoreIdentity } from "../../../config/sessions/session-store-path.js";
+import { resolvePhysicalSessionStorePath } from "../../../config/sessions/session-store-path.js";
 import { collectSessionMaintenancePreserveKeys } from "../../../config/sessions/store-maintenance-preserve.js";
 import { parseAgentSessionKey } from "../../../routing/session-key.js";
 import {
@@ -81,7 +81,7 @@ export function addSubagentRunForTests(entry: SubagentRunRecordOverrides) {
   const requesterAgentId =
     entry.requesterAgentId ?? parseAgentSessionKey(canonical.requesterSessionKey)?.agentId;
   if (!Object.hasOwn(entry, "requesterStorePath") && requesterAgentId) {
-    canonical.requesterStorePath = resolveSessionStoreIdentity({
+    canonical.requesterStorePath = resolvePhysicalSessionStorePath({
       sessionKey: canonical.requesterSessionKey,
       agentId: requesterAgentId,
     });
@@ -89,7 +89,7 @@ export function addSubagentRunForTests(entry: SubagentRunRecordOverrides) {
   const controllerKey = canonical.controllerSessionKey ?? canonical.requesterSessionKey;
   const controllerAgentId = parseAgentSessionKey(controllerKey)?.agentId ?? requesterAgentId;
   if (!Object.hasOwn(entry, "controllerStorePath") && controllerAgentId) {
-    canonical.controllerStorePath = resolveSessionStoreIdentity({
+    canonical.controllerStorePath = resolvePhysicalSessionStorePath({
       sessionKey: controllerKey,
       agentId: controllerAgentId,
     });

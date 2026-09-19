@@ -78,6 +78,65 @@ export function listRunsForRequesterFromRuns(
   return results;
 }
 
+export function selectConnectedSettledSubagentWave(
+  candidates: readonly SubagentRunRecord[],
+  settledEntry: SubagentRunRecord,
+): SubagentRunRecord[] {
+  const targetIndex = candidates.findIndex((entry) => entry.runId === settledEntry.runId);
+  const target = candidates[targetIndex];
+  if (!target) {
+    return [];
+  }
+
+  const sorted = candidates
+    .map((entry, originalIndex) => ({
+      entry,
+      originalIndex,
+      endedAt:
+        typeof entry.execution.endedAt === "number"
+          ? entry.execution.endedAt
+          : Number.MAX_SAFE_INTEGER,
+    }))
+    .toSorted(
+      (a, b) =>
+        a.entry.createdAt - b.entry.createdAt ||
+        a.endedAt - b.endedAt ||
+        a.originalIndex - b.originalIndex,
+    );
+  const first = sorted[0];
+  if (!first) {
+    return [];
+  }
+
+  let componentStart = 0;
+  let componentEnd = first.endedAt;
+  let containsTarget = first.originalIndex === targetIndex;
+  for (let index = 1; index <= sorted.length; index += 1) {
+    const next = sorted[index];
+    // Interval-graph components are contiguous after sorting by spawn time.
+    // Spawn time, rather than execution admission, keeps capacity-queued siblings together.
+    if (!next || next.entry.createdAt > componentEnd) {
+      if (containsTarget) {
+        const component = sorted
+          .slice(componentStart, index)
+          .filter((item) => item.originalIndex !== targetIndex)
+          .toSorted((a, b) => a.originalIndex - b.originalIndex);
+        return [target, ...component.map((item) => item.entry)];
+      }
+      if (!next) {
+        break;
+      }
+      componentStart = index;
+      componentEnd = next.endedAt;
+      containsTarget = next.originalIndex === targetIndex;
+      continue;
+    }
+    componentEnd = Math.max(componentEnd, next.endedAt);
+    containsTarget ||= next.originalIndex === targetIndex;
+  }
+  return [];
+}
+
 /** Lists runs controlled by the normalized controller session key. */
 export function listRunsForControllerFromRuns<T extends SubagentRunReadRecord>(
   runs: Map<string, T>,

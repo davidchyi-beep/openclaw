@@ -13,7 +13,7 @@ import {
 } from "./paths.js";
 import { resolveSqliteTargetFromSessionStorePath } from "./session-sqlite-target.js";
 
-export function resolveSessionStoreIdentity(
+export function resolvePhysicalSessionStorePath(
   scope: SessionStorePathScope,
   cfg?: OpenClawConfig,
 ): string {
@@ -34,7 +34,7 @@ export function publishSystemEventStoreConfig(cfg: OpenClawConfig): void {
     const scope = { sessionKey, agentId, env };
     const key = JSON.stringify([agentId, resolveSessionStorePathForScope(scope, cfg)]);
     if (!paths.has(key)) {
-      paths.set(key, resolveSessionStoreIdentity(scope, cfg));
+      paths.set(key, resolvePhysicalSessionStorePath(scope, cfg));
     }
     return paths.get(key)!;
   });
@@ -49,7 +49,7 @@ export function captureSessionWatcherStorePaths(
       .filter((key) => parseAgentSessionKey(key) != null)
       .map((sessionKey) => [
         sessionKey,
-        getSystemEventStorePath(sessionKey) ?? resolveSessionStoreIdentity({ sessionKey, env }),
+        getSystemEventStorePath(sessionKey) ?? resolvePhysicalSessionStorePath({ sessionKey, env }),
       ]),
   );
 }

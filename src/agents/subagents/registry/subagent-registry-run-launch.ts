@@ -1,4 +1,4 @@
-import { resolveSessionStoreIdentity } from "../../../config/sessions/session-store-path.js";
+import { resolvePhysicalSessionStorePath } from "../../../config/sessions/session-store-path.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 /** Owns subagent registration and queued collector launch transitions. */
 import {
@@ -98,13 +98,13 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
     const previous = this.options.runs.get(runId);
     entry.requesterStorePath = previous
       ? previous.requesterStorePath
-      : resolveSessionStoreIdentity(
+      : resolvePhysicalSessionStorePath(
           { sessionKey: requesterSessionKey, agentId: entry.requesterAgentId },
           cfg,
         );
     entry.controllerStorePath = previous
       ? previous.controllerStorePath
-      : resolveSessionStoreIdentity(
+      : resolvePhysicalSessionStorePath(
           {
             sessionKey: entry.controllerSessionKey,
             agentId: resolveAgentIdFromSessionKey(
