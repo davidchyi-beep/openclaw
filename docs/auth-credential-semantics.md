@@ -100,8 +100,11 @@ invalidating chat metadata or broadcasting a change to connected clients.
 
 Repeated model resolution reuses persisted auth rows while the owning database's
 write generation and file identity remain unchanged. Committed auth writes and
-runtime snapshot reloads invalidate those rows; database, WAL, and journal changes
-also invalidate reads from other processes. Scoped overlays, migration refusals,
+runtime snapshot reloads invalidate those rows immediately. Database, WAL, and
+journal identities are probed at most once per 100 ms on warm cache hits; the
+first read at or after that interval detects changes from other processes.
+Hits do not extend this freshness window. Cache misses still check identity
+before and after reading rows. Scoped overlays, migration refusals,
 and personal-account selection still run on each request. Isolated agent scopes
 and private database snapshots do not share this cache. Gateway cache misses reuse
 a read-only child whose lifetime ends at shutdown; each read reacquires its source
@@ -110,8 +113,17 @@ Usage bookkeeping invalidates later cache reuse while admitted reads can finish
 their snapshots. Credential, selection, ownership, and lifecycle changes still
 invalidate in-flight preparation.
 Model selection retries that stale read once after its readers finish cleanup,
-preserving the selected agent and any explicit profile pin. Continued changes,
-admission refusals, and cleanup failures remain errors.
+preserving the selected agent and any explicit profile pin. If an in-process OAuth
+refresh invalidated the read, selection first observes that owner's durable
+settlement, including inherited credentials and fenced peers. This wait uses the
+existing refresh timeout and neither reads credentials nor starts another refresh.
+Reconnects release waits for the replaced claim; readers of still-fenced peers
+continue to wait for the owner's cleanup.
+Pending refresh profiles remain candidates for model id/mode selection; the OAuth
+owner still settles the refresh before credentials can be used. A caller timeout
+does not retire its durable settlement from observation, and a waiting model read
+cannot cancel it. Continued changes, admission refusals, and cleanup failures
+remain errors.
 Workers certify committed SQLite visibility before rows enter the cache. Reads
 with unpublished or trailing WAL frames return normally without being retained.
 

@@ -1,5 +1,8 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "src/channels/join-intro/report-channel-room-join.test.ts",
+  "src/plugin-sdk/ingress-effect-once.test.ts",
+  "src/plugin-sdk/persistent-dedupe.worker.test.ts",
   "src/audit/audit-events.test.ts",
   "src/audit/audit-event-store.message.test.ts",
   "src/audit/audit-event-writer.test.ts",
@@ -52,6 +55,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/cli/config-cli.integration.test.ts",
   "src/cli/config-cli.secrets.integration.test.ts",
   "src/cli/resume-cli.test.ts",
+  "src/cli/update-cli/update-command-config-fence.test.ts",
   "src/snapshot/git-backup.test.ts",
   "src/plugins/conversation-binding.test.ts",
   "src/plugins/conversation-binding.worker.test.ts",
@@ -120,6 +124,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/plugins/status.runtime-inspection.test.ts",
 
   "src/plugins/plugin-metadata-state-worker.test.ts",
+  "src/plugins/public-artifact-environment.test.ts",
   "src/plugins/official-external-plugin-catalog-snapshot-store.worker.test.ts",
   "src/plugins/official-external-plugin-catalog.test.ts",
   "src/infra/device-pairing.test.ts",
@@ -176,6 +181,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/state/openclaw-state-db-read-admission.test.ts",
   "src/state/openclaw-state-maintenance-resources.test.ts",
   "src/tasks/task-registry.test.ts",
+  "src/tasks/task-registry.notifications.test.ts",
   "test/cron-message-read.integration.test.ts",
   "test/imessage-reply-alias.integration.test.ts",
   "test/matrix-channel-read-authority.integration.test.ts",

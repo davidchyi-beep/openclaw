@@ -322,6 +322,22 @@ suite.define(() => {
         const cpuTrigger = widget.getByRole("button", { name: "Show Gateway CPU breakdown" });
         const cpuTooltip = widget.locator(".gateway-cpu-tooltip");
         const cpuDetail = cpuTooltip.locator(".gateway-cpu-detail");
+        const transitionCpuDetail = async (
+          eventName: "wa-after-show" | "wa-after-hide",
+          action: () => Promise<void>,
+        ) => {
+          // Visibility includes closing animations; finish each input mode before starting another.
+          await cpuTooltip.evaluate((element, transitionEvent) => {
+            element.removeAttribute("data-test-transition");
+            element.addEventListener(
+              transitionEvent,
+              () => element.setAttribute("data-test-transition", transitionEvent),
+              { once: true },
+            );
+          }, eventName);
+          await action();
+          await expect.poll(() => cpuTooltip.getAttribute("data-test-transition")).toBe(eventName);
+        };
         await expect
           .poll(() => widget.locator(".sparkline-tile__secondary").textContent())
           .toContain("Host 34%");
@@ -354,14 +370,14 @@ suite.define(() => {
             path: path.join(proofDir, "cpu-breakdown-desktop.png"),
           });
         }
-        await page.keyboard.press("Escape");
+        await transitionCpuDetail("wa-after-hide", () => page.keyboard.press("Escape"));
         await expect.poll(() => cpuDetail.isVisible()).toBe(false);
         expect(await widget.isVisible()).toBe(true);
         await cpuTrigger.blur();
         await page.keyboard.press("Tab");
         await cpuTrigger.focus();
         await expect.poll(() => cpuDetail.isVisible()).toBe(true);
-        await page.keyboard.press("Escape");
+        await transitionCpuDetail("wa-after-hide", () => page.keyboard.press("Escape"));
         await page.setViewportSize({ height: 844, width: 390 });
         const mobileWidget = await widget.boundingBox();
         expect(mobileWidget).not.toBeNull();
@@ -377,7 +393,7 @@ suite.define(() => {
             path: path.join(proofDir, "system-busyness-minimized-mobile.png"),
           });
         }
-        await cpuTrigger.tap();
+        await transitionCpuDetail("wa-after-show", () => cpuTrigger.tap());
         await expect.poll(() => cpuDetail.isVisible()).toBe(true);
         const detailBounds = await cpuDetail.boundingBox();
         expect(detailBounds!.x).toBeGreaterThanOrEqual(0);
@@ -390,7 +406,7 @@ suite.define(() => {
             path: path.join(proofDir, "cpu-breakdown-mobile.png"),
           });
         }
-        await cpuTrigger.tap();
+        await transitionCpuDetail("wa-after-hide", () => cpuTrigger.tap());
         await expect.poll(() => cpuDetail.isVisible()).toBe(false);
         await page.setViewportSize({ height: 1000, width: 1280 });
         for (const scenario of [
@@ -446,7 +462,7 @@ suite.define(() => {
               path: path.join(proofDir, `cpu-${scenario.name}.png`),
             });
           }
-          await page.keyboard.press("Escape");
+          await transitionCpuDetail("wa-after-hide", () => page.keyboard.press("Escape"));
         }
         await widget.getByRole("button", { name: "Expand system busyness" }).click();
         await widget.waitFor({ state: "detached" });

@@ -63,6 +63,7 @@ import { quoteCliArg } from "./quote-cli-arg.js";
 import { createCliRuntimeCapture, getMockCallOutput } from "./test-runtime-capture.js";
 import * as runtimeRecovery from "./update-cli/update-command-runtime-recovery.test-support.js";
 import { createGlobalUserServiceCommand } from "./update-cli/update-command-service-state.test-support.js";
+import { isLegacyUpdateDoctorCommand } from "./update-cli/update-command-transport.test-support.js";
 
 const commandTransport = vi.hoisted(() => ({
   run: vi.fn<typeof import("../process/exec.js").runCommandWithTimeout>(),
@@ -917,20 +918,10 @@ describe("update-cli", () => {
   };
 
   const doctorCommandCall = () =>
-    commandCalls().find(
-      ([argv]) =>
-        argv[2] === "doctor" &&
-        argv[3] === "--non-interactive" &&
-        (argv.length === 4 || argv[4] === "--fix"),
-    );
+    commandCalls().find(([argv]) => isLegacyUpdateDoctorCommand(argv));
 
   const doctorCommandCallIndex = () =>
-    commandCalls().findIndex(
-      ([argv]) =>
-        argv[2] === "doctor" &&
-        argv[3] === "--non-interactive" &&
-        (argv.length === 4 || argv[4] === "--fix"),
-    );
+    commandCalls().findIndex(([argv]) => isLegacyUpdateDoctorCommand(argv));
 
   const freshRestartCalls = () =>
     vi
@@ -3445,8 +3436,9 @@ describe("update-cli", () => {
       expect(activations.filter((entry) => !entry.afterPlugin)).toEqual([]);
       expect(activations.filter((entry) => entry.afterPlugin)).toEqual([
         { version: "1.0.0", afterPlugin: true },
-        { version: "1.0.0", afterPlugin: true },
       ]);
+      expect(gatewayCommandCall(entryPath, "install")).toBeUndefined();
+      expect(gatewayCommandCall(entryPath, "restart")?.[0]).toContain("--preserve-definition");
       expect(resumeScheduledTaskAutoStartAfterUpdate.mock.invocationCallOrder[0]).toBeGreaterThan(
         pluginStartOrder,
       );
@@ -4861,6 +4853,7 @@ describe("update-cli", () => {
   it.each([false, true])(
     "reports successful plugin source fallback without failing the core update (json=%s)",
     async (json) => {
+      mockGitUpdateAfterMutation();
       const fallback = "@openclaw/demo unavailable; using clawhub:@openclaw/demo instead.";
       syncPluginsForUpdateChannel.mockImplementationOnce(
         async (params: {
@@ -5119,6 +5112,7 @@ describe("update-cli", () => {
   });
 
   it("includes colored ClawHub trust warnings in json post-core plugin output", async () => {
+    mockGitUpdateAfterMutation();
     vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValueOnce(
       "/tmp/openclaw-updated-entry.mjs",
     );
@@ -5286,6 +5280,7 @@ describe("update-cli", () => {
   });
 
   it("marks disabled-after-failure plugin skips as post-update warnings", async () => {
+    mockGitUpdateAfterMutation();
     vi.mocked(resolveGatewayInstallEntrypoint).mockResolvedValueOnce(
       "/tmp/openclaw-updated-entry.mjs",
     );
@@ -10591,7 +10586,7 @@ describe("update-cli", () => {
     expect(updateCall?.beforeGitMutation).toEqual(expect.any(Function));
     expect(updateCall?.allowGatewayActivation).toBe(false);
     expect(preparations).toEqual([
-      { allowGatewayServiceRepair: true, allowGatewayActivation: true },
+      { allowGatewayServiceRepair: false, allowGatewayActivation: false },
     ]);
   });
 
@@ -13054,10 +13049,8 @@ describe("update-cli", () => {
 
       expect(gatewayCommandCall(updatedEntrypoint, "install")).toBeDefined();
       const restartCall = gatewayCommandCall(updatedEntrypoint, "restart");
-      expect(restartCall?.[0].slice(1)).toEqual([
-        updatedEntrypoint,
-        "gateway",
-        "restart",
+      expect(restartCall?.[0].slice(4)).toEqual([
+        "--preserve-definition",
         "--json",
         "--update-executor",
         "run",
@@ -13159,10 +13152,8 @@ describe("update-cli", () => {
     expectNoSideEffects(runRestartScript, runDaemonRestart);
     const restartCall = gatewayCommandCall(updatedEntrypoint, "restart");
     expect(restartCall?.[0][0]).toContain("node");
-    expect(restartCall?.[0].slice(1)).toEqual([
-      updatedEntrypoint,
-      "gateway",
-      "restart",
+    expect(restartCall?.[0].slice(4)).toEqual([
+      "--preserve-definition",
       "--json",
       "--update-executor",
       "run",

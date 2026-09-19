@@ -269,6 +269,29 @@ export function createControlUiHandlers(
   loadChecks: typeof loadControlUiSessionPullRequestChecks = loadSessionCheckDetails,
 ): GatewayRequestHandlers {
   return {
+    "controlUi.linkPreview": async ({ params, context, respond, signal }) => {
+      const isEnabled = () =>
+        context.getRuntimeConfig().gateway?.controlUi?.automaticallyFetchFavicons !== false;
+      if (!isEnabled()) {
+        respond(true, {}, undefined);
+        return;
+      }
+      const { parseControlUiLinkPreviewUrl, loadControlUiLinkPreview } =
+        await import("../control-ui-link-preview.js");
+      const url = Object.keys(params).every((key) => key === "url")
+        ? parseControlUiLinkPreviewUrl(params.url)
+        : null;
+      if (!url) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "invalid controlUi.linkPreview params"),
+        );
+        return;
+      }
+      const preview = await loadControlUiLinkPreview(url, isEnabled);
+      respond(true, !signal?.aborted && isEnabled() ? preview : {}, undefined);
+    },
     "controlUi.githubPreview": async (options) => {
       const { params, respond, context } = options;
       const target = gitHubPublicApi.parseControlUiGitHubPreviewTarget(params);

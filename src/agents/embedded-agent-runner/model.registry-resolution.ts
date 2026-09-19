@@ -196,25 +196,28 @@ export async function resolveDynamicModelAuthProfile(params: {
     }),
   };
   const readStore = () => loadAuthProfileStoreForRuntimeAsync(agentDir, readOptions);
-  const store = await readStore().catch((error: unknown) => {
+  const providers = listOpenAIAuthProfileProvidersForAgentRuntime({
+    provider: params.provider,
+    config: params.cfg,
+  });
+  const store = await readStore().catch(async (error: unknown) => {
     if (!(error instanceof AuthProfileRuntimeReadStaleError)) {
       throw error;
     }
     // OAuth publication can overlap selection. The rejected reader has joined its cleanup.
+    await error.waitForSettlement?.();
     return readStore();
   });
   const profileId =
     explicitProfileId ??
-    listOpenAIAuthProfileProvidersForAgentRuntime({
-      provider: params.provider,
-      config: params.cfg,
-    }).flatMap((provider) =>
+    providers.flatMap((provider) =>
       resolveAuthProfileOrder({
         cfg: params.cfg,
         store,
         provider,
         preferredProfile: params.preferredProfile,
         forModel: params.modelId,
+        includePendingOAuthRefresh: true,
       }),
     )[0];
   if (!profileId) {

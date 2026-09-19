@@ -564,6 +564,33 @@ describe("openclaw-tooltip", () => {
     expectOpenCount(0);
   });
 
+  it.each([false, true])(
+    "returns Escape focus from rich content to its trigger (wrapped=%s)",
+    async (wrapped) => {
+      const { tooltip, trigger, card } = createRichTooltip("Focusable card");
+      if (wrapped) {
+        const wrapper = document.createElement("span");
+        trigger.replaceWith(wrapper);
+        wrapper.append(trigger);
+      }
+      const action = document.createElement("button");
+      action.textContent = "Card action";
+      card.append(action);
+      document.body.append(tooltip);
+      await tooltip.updateComplete;
+      trigger.focus();
+      action.focus();
+      expectOpenCount(1);
+      action.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+      expect(document.activeElement).toBe(trigger);
+      expectOpenCount(0);
+      vi.advanceTimersByTime(500);
+      expectOpenCount(0);
+    },
+  );
+
   it("stays open when a focused trigger is swept through and out of rich content", async () => {
     const { tooltip, trigger } = createRichTooltip("Scrollable card");
     document.body.append(tooltip);
