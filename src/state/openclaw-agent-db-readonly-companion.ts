@@ -15,6 +15,7 @@ import {
 import {
   hasOpenClawAgentReadOnlySchema,
   openOpenClawAgentDatabaseReadOnly,
+  readOpenClawAgentDatabase,
   withFreshOpenClawAgentDatabaseReadOnly,
   type OpenClawAgentDatabaseReadOnlyResult,
   type OpenClawAgentReadOnlyDatabase,
@@ -81,7 +82,7 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
     try {
       // A pathname replacement during open keeps the old one-shot read contract.
       if (!matchesWriter(reader, writer)) {
-        return { found: true, value: operation(reader) };
+        return readOpenClawAgentDatabase(reader, operation);
       }
       enableNodeSqliteKyselyStatementCache(reader.db);
       unregisterDispose = registerNodeSqliteDisposeCallback(writer.db, close);
@@ -101,7 +102,7 @@ export function withCommittedOpenClawAgentDatabaseReadOnly<T>(
       return { found: false, reason: "schema-missing" };
     }
     owned.active = true;
-    return { found: true, value: operation(owned.reader) };
+    return readOpenClawAgentDatabase(owned.reader, operation);
   } catch (error) {
     owned.close();
     throw error;

@@ -1,10 +1,10 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import type { SessionEntry } from "../config/sessions.js";
-import { SessionMetadataUnavailableError } from "../config/sessions/session-accessor.sqlite-exact-read.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SystemPresence } from "../infra/system-presence.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
+import { SessionMetadataUnavailableError } from "../state/openclaw-agent-db-read-error.js";
 import { authorizeOperatorScopesForRequiredScope, READ_SCOPE } from "./method-scopes.js";
 import { isGatewayClientProfilePending } from "./server-methods/gateway-client-identity.js";
 import type { GatewayClient } from "./server-methods/types.js";

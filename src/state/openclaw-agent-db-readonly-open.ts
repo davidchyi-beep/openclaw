@@ -3,8 +3,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
 import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync-cache-state.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
+import { sqlitePrimaryResultCode } from "../infra/sqlite-error-diagnostics.js";
 import type { OpenClawAgentDatabaseOptions } from "./openclaw-agent-db-contract.js";
 import { registerOpenClawAgentDatabaseIdentity } from "./openclaw-agent-db-identity.js";
+import { classifyOpenClawAgentDatabaseReadError } from "./openclaw-agent-db-read-error.js";
 import {
   assertCanonicalAgentPersistenceVersion,
   assertExistingAgentSchemaOwner,
@@ -35,6 +37,19 @@ export type OpenClawAgentDatabaseReadOnlyResult<T> =
   | { found: true; value: T }
   | { found: false; reason: "database-missing" | "schema-missing" };
 
+export function readOpenClawAgentDatabase<T>(
+  database: OpenClawAgentReadOnlyDatabase,
+  operation: (database: OpenClawAgentReadOnlyDatabase) => T,
+): { found: true; value: T } {
+  try {
+    return { found: true, value: operation(database) };
+  } catch (error) {
+    throw sqlitePrimaryResultCode(error) === 1
+      ? classifyOpenClawAgentDatabaseReadError(database.db, error)
+      : error;
+  }
+}
+
 /** Recheck committed admission facts before using an existing read-only connection. */
 export function hasOpenClawAgentReadOnlySchema(database: OpenClawAgentReadOnlyDatabase): boolean {
   const userVersion = assertSupportedAgentSchemaVersion(database.db, database.path);
@@ -58,7 +73,7 @@ export function withFreshOpenClawAgentDatabaseReadOnly<T>(
     return opened;
   }
   try {
-    return { found: true, value: operation(opened.database) };
+    return readOpenClawAgentDatabase(opened.database, operation);
   } finally {
     opened.database.close();
   }

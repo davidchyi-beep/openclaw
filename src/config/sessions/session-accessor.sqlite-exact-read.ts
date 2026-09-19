@@ -1,6 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import { iterateSqliteQuerySync } from "../../infra/kysely-sync.js";
+import { SessionMetadataUnavailableError } from "../../state/openclaw-agent-db-read-error.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import {
   openOpenClawAgentDatabase,
@@ -208,13 +209,6 @@ export type ExactSessionEntryBatchScope = Omit<SessionEntryReadScope, "sessionKe
   sessionKeys: readonly string[];
   onReadSource?: (source: SessionEntryReadSource) => void;
 };
-
-export class SessionMetadataUnavailableError extends Error {
-  constructor(readonly reason: "database-missing" | "schema-missing") {
-    super(`Session metadata unavailable (${reason}); retry after the agent store is ready.`);
-    this.name = "SessionMetadataUnavailableError";
-  }
-}
 
 function groupExactSessionEntryReadRequests(scopes: readonly ExactSessionEntryBatchScope[]) {
   const results: Array<Result<ExactSessionEntry[], unknown> | undefined> = [];

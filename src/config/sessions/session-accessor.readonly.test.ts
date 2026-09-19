@@ -529,7 +529,13 @@ describe("session accessor readonly listing", () => {
       "DROP TABLE transcript_events;",
     );
 
-    expect(() => readSessionTranscriptWatermark(scope)).toThrow(/no such table: transcript_events/);
+    expect(() => readSessionTranscriptWatermark(scope)).toThrow(
+      expect.objectContaining({
+        name: "SessionMetadataUnavailableError",
+        reason: "table-missing",
+        missingTables: ["transcript_events"],
+      }),
+    );
   });
 
   it("probes lifecycle status without creating or registering a missing database", () => {

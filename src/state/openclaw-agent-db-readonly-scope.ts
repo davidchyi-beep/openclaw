@@ -5,6 +5,7 @@ import { isOpenClawAgentDatabasePathCurrent } from "./openclaw-agent-db-identity
 import {
   hasOpenClawAgentReadOnlySchema,
   openOpenClawAgentDatabaseReadOnly,
+  readOpenClawAgentDatabase,
   withFreshOpenClawAgentDatabaseReadOnly,
   type OpenClawAgentDatabaseReadOnlyResult,
   type OpenClawAgentReadOnlyDatabase,
@@ -70,7 +71,7 @@ export class OpenClawAgentDatabaseReadOnlyScope {
       this.database = undefined;
       return { found: false, reason: "schema-missing" };
     }
-    return { found: true, value: operation(this.database) };
+    return readOpenClawAgentDatabase(this.database, operation);
   }
 }
 

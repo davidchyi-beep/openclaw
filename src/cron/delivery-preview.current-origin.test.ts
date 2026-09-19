@@ -7,6 +7,7 @@ import {
   replaceSessionEntrySync,
 } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { clearNodeSqliteKyselyCacheForDatabase } from "../infra/kysely-sync.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { getOpenClawAgentDatabaseIfOpen } from "../state/openclaw-agent-db.js";
 import {
@@ -147,6 +148,66 @@ describe("current cron delivery origin", () => {
       );
     },
   );
+
+  it("records a lost metadata table beside two healthy delivery previews", async () => {
+    await withCurrentOrigin(
+      { source: { channel: "telegram", to: "recipient" } },
+      async ({ job }) => {
+        const cfg: OpenClawConfig = { agents: { entries: { main: {}, interrupted: {} } } };
+        const interrupted = makeCronJob({
+          id: "interrupted",
+          agentId: "interrupted",
+          sessionTarget: "current",
+          sessionKey: "agent:interrupted:dashboard:current-origin",
+          delivery: { mode: "announce" },
+        });
+        replaceSessionEntrySync(
+          { agentId: "interrupted", sessionKey: interrupted.sessionKey! },
+          { sessionId: "interrupted-source", updatedAt: 1 },
+        );
+        const { db } = getOpenClawAgentDatabaseIfOpen({ agentId: "interrupted" })!;
+        clearNodeSqliteKyselyCacheForDatabase(db);
+        const prepare = db.prepare.bind(db);
+        const prepareSpy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
+          if (sql.includes('from "session_key_contract"')) {
+            prepareSpy.mockRestore();
+            db.exec("DROP TABLE session_key_contract");
+          }
+          return prepare(sql);
+        });
+        try {
+          const previews = await resolveCronDeliveryPreviews({
+            cfg,
+            jobs: [
+              { ...job, id: "healthy-current" },
+              interrupted,
+              {
+                ...job,
+                id: "healthy-explicit",
+                delivery: { mode: "announce", channel: "telegram", to: "other-recipient" },
+              },
+            ],
+          });
+          expect(previews).toEqual({
+            "healthy-current": {
+              label: "announce -> telegram:recipient",
+              detail: `resolved from last, session ${job.sessionKey}`,
+            },
+            interrupted: {
+              label: "announce -> last",
+              detail: expect.stringMatching(/^delivery preview unavailable: .*table-missing/u),
+            },
+            "healthy-explicit": {
+              label: "announce -> telegram:other-recipient",
+              detail: "explicit",
+            },
+          });
+        } finally {
+          prepareSpy.mockRestore();
+        }
+      },
+    );
+  });
 
   it("uses a recovered source route when the configured primary store is absent", async () => {
     await withCurrentOrigin(

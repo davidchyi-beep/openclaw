@@ -6,6 +6,7 @@ import {
 } from "../../gateway/session-store-key.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { requiresFoldedSessionKeyAliasProof } from "../../sessions/session-key-utils.js";
+import { SessionMetadataUnavailableError } from "../../state/openclaw-agent-db-read-error.js";
 import {
   deliveryContextFromSession,
   hasDeliveryTargetFields,
@@ -18,7 +19,6 @@ import {
   loadExactSessionEntryReadOnly,
   openSessionEntryReadView,
 } from "./session-accessor.js";
-import { SessionMetadataUnavailableError } from "./session-accessor.sqlite-exact-read.js";
 import type { SessionEntryReadSource, SessionEntryReadView } from "./session-accessor.types.js";
 import {
   foldedSessionKeyAliasCandidates,

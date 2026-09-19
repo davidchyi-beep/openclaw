@@ -4,12 +4,12 @@ import {
   iterateSqliteQuerySync,
   prepareSqliteQuerySync,
 } from "../../infra/kysely-sync.js";
-import { sqliteErrorCode } from "../../infra/sqlite-error-diagnostics.js";
 import { assertSqliteJsonlReadBudget } from "../../infra/sqlite-jsonl-budget.js";
 import { coerceRequiredSqliteNumber as sqliteNumber } from "../../infra/sqlite-number.js";
 import { runSqliteDeferredTransactionSync } from "../../infra/sqlite-transaction.js";
 import { extractAssistantPhaseText } from "../../shared/chat-message-content.js";
 import { isTranscriptOnlyOpenClawAssistantModel } from "../../shared/transcript-only-openclaw-assistant.js";
+import { SessionMetadataUnavailableError } from "../../state/openclaw-agent-db-read-error.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import {
   openOpenClawAgentDatabase,
@@ -451,11 +451,7 @@ export function readTranscriptStatsBatchReadOnlySync(
         }
       }
     } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        sqliteErrorCode(error) !== "ERR_SQLITE_ERROR" ||
-        !/\bno such table:/iu.test(error.message)
-      ) {
+      if (!(error instanceof SessionMetadataUnavailableError)) {
         throw error;
       }
       // A missing table leaves the whole store unavailable, including earlier chunks.
