@@ -215,8 +215,7 @@ export async function runQueuedStoreWrite<T>(params: {
       }
       queue.pending.splice(index, 1);
       task.detach();
-      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Forward the caller's exact cancellation reason, including undefined.
-      reject(params.signal?.reason);
+      task.reject(params.signal?.reason);
     };
     const task: StoreWriterTask = {
       detach: () => params.signal?.removeEventListener("abort", abort),
