@@ -34,6 +34,15 @@ earlier tool failures remain available in expanded work. Active work stays expan
 including a run continued by a steering message. Channel conversations retain
 their full transcript.
 
+## Message information
+
+Tap the subdued timestamp under an assistant message to see its recorded model,
+token counts, cache reads/writes, and estimated cost when the Gateway supplies them.
+These are facts for that message's model call, not totals for the whole run.
+Missing and zero-valued details are omitted; messages without details keep a plain
+timestamp. The existing offline transcript cache retains these facts. Android does
+not infer a historical context percentage from the current session's model limit.
+
 ## Review changes
 
 When the connected Gateway advertises `sessions.diff`, open a conversation's
