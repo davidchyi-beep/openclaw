@@ -383,6 +383,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
                   ? { taskSuggestionDeliveryMode: "gateway" as const }
                   : {}),
                 requestedSessionId,
+                expectedActiveReplyOperation: admission.expectedActiveReplyOperation,
                 ...(restartSafeAdmission
                   ? {
                       expectedExistingSessionId: admittedSessionId,

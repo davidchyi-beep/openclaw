@@ -79,6 +79,7 @@ type ReplyTurnAdmission =
       status: "skipped";
       reason: "active-run" | "aborted" | "lifecycle-invalidated";
       activeOperation?: ReplyOperation;
+      sessionEntry?: SessionEntry;
       lifecycleAdmission?: SessionWorkAdmissionLease;
     };
 
@@ -177,7 +178,8 @@ type ReplyTurnAdmissionParams = {
   sessionKey: string;
   sessionId: string;
   expectedSessionId?: string;
-  expectedActiveOperation?: ReplyOperation;
+  /** Observed predecessors, from oldest to newest. */
+  expectedActiveOperations?: readonly ReplyOperation[];
   storePath?: string;
   kind: ReplyTurnKind;
   resetTriggered: boolean;
@@ -365,22 +367,32 @@ export async function admitReplyTurn(
                 }
                 const registeredOperation = replyRunRegistry.get(params.sessionKey);
                 const rotationSources = [...waitedRotations.values()];
-                for (const candidate of [
-                  registeredOperation,
-                  params.expectedActiveOperation,
+                for (const candidate of new Set([
+                  ...(params.expectedActiveOperations ?? []),
                   activeAtAdmission,
-                ]) {
+                  registeredOperation,
+                ])) {
                   if (candidate) {
-                    rotationSources.push(
-                      mergeWaitedRotation({
-                        operation: candidate,
-                        sessionId: candidate.sessionId,
-                        sessionIds: candidate.captureOwnedSessionIds(),
-                        databaseIdentity:
-                          lifecycleAdmissionByOperation.get(candidate)?.databaseIdentity,
-                        fromBarrier: false,
-                      }),
-                    );
+                    let source = mergeWaitedRotation({
+                      operation: candidate,
+                      sessionId: candidate.sessionId,
+                      sessionIds: candidate.captureOwnedSessionIds(),
+                      databaseIdentity:
+                        lifecycleAdmissionByOperation.get(candidate)?.databaseIdentity,
+                      fromBarrier: false,
+                    });
+                    if (!isRotationSourceCurrent(source)) {
+                      continue;
+                    }
+                    for (const previous of rotationSources) {
+                      if (isRotationSourceCurrent(previous)) {
+                        source = mergeReplyRunAdmissionSource(source, {
+                          ...previous,
+                          sessionIds: new Set(previous.sessionIds),
+                        });
+                      }
+                    }
+                    rotationSources.push(source);
                   }
                 }
                 const activeOperationRotatedExpectedSession = rotationSources.some(
@@ -594,6 +606,7 @@ export async function admitReplyTurn(
               status: "skipped",
               reason: "active-run",
               activeOperation: replyRunRegistry.get(params.sessionKey),
+              ...(admittedSessionEntry ? { sessionEntry: admittedSessionEntry } : {}),
               lifecycleAdmission: admission,
             };
           }
