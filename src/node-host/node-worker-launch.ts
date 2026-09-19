@@ -4,6 +4,7 @@ import type { WorkerLaunchDescriptor } from "../worker/launch-descriptor.js";
 import type { NodeWorkerCapacity } from "./node-worker-capacity.js";
 import type { NodeWorkerContainerEngine } from "./node-worker-container-engine.js";
 import type { NodeWorkerContainerLifecycle } from "./node-worker-container-lifecycle.js";
+import type { NodeWorkerCleanupMode } from "./node-worker-launch-receipt.js";
 import type {
   NodeWorkerLaunchClaim,
   NodeWorkerLaunchReceipt,
@@ -82,6 +83,7 @@ export async function startNodeWorkerChild(
     });
   let adapter: NodeWorkerChildAdapter;
   let container: NodeWorkerContainerIdentity | undefined;
+  let cleanupMode: NodeWorkerCleanupMode | null;
   try {
     const prepared = await prepareNodeWorkerLaunchTransport({
       bundleRoot: context.bundleRoot,
@@ -89,6 +91,8 @@ export async function startNodeWorkerChild(
       engineEnv: context.engineEnv,
       input: params.input,
       descriptor: params.descriptor,
+      planHash: params.planHash,
+      supervisor: params.supervisor,
       connectionFailure,
       scrubber,
       store: context.store,
@@ -101,6 +105,7 @@ export async function startNodeWorkerChild(
     }
     adapter = prepared.adapter;
     container = prepared.container;
+    cleanupMode = prepared.cleanupMode;
   } catch (error) {
     return finishFailed(
       sanitizeNodeWorkerDiagnostic(error, "node worker spawn failed", scrubber.scrub),
@@ -159,6 +164,7 @@ export async function startNodeWorkerChild(
       planHash: active.planHash,
       supervisor: params.supervisor,
       worker,
+      cleanupMode,
       ...(container ? { container } : {}),
     });
   } catch (error) {

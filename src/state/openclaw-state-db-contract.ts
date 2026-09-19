@@ -36,6 +36,7 @@ export const FIRST_USE_STATE_TABLES = [
   "execution_identity_contexts",
   "mcp_oauth_pending_authorizations",
   "node_worker_launch_containers",
+  "node_worker_launch_cleanup",
   "node_worker_launches",
   "node_worker_prepared_workspaces",
   "node_worker_turns",

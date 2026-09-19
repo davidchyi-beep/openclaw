@@ -219,6 +219,7 @@ function claimFixtureLaunch(
       planHash: identity.planHash,
       supervisor,
       worker,
+      cleanupMode: null,
       container: { engine: "docker", engineTarget: fixture.containerEngine.target, containerId },
     });
   }

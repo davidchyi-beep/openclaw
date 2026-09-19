@@ -934,6 +934,12 @@ export interface NativeHookRelayBridges {
   updated_at_ms: number;
 }
 
+export interface NodeWorkerLaunchCleanup {
+  cleanup_mode: string;
+  launch_id: string;
+  lineage_settled: number | null;
+}
+
 export interface NodeWorkerLaunchContainers {
   container_json: string | null;
   launch_id: string;
@@ -1801,6 +1807,7 @@ export interface DB {
   migration_runs: MigrationRuns;
   migration_sources: MigrationSources;
   native_hook_relay_bridges: NativeHookRelayBridges;
+  node_worker_launch_cleanup: NodeWorkerLaunchCleanup;
   node_worker_launch_containers: NodeWorkerLaunchContainers;
   node_worker_launches: NodeWorkerLaunches;
   node_worker_prepared_workspaces: NodeWorkerPreparedWorkspaces;

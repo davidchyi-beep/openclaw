@@ -59,6 +59,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/cli/config-cli.integration.test.ts",
   "src/cli/config-cli.secrets.integration.test.ts",
   "src/cli/resume-cli.test.ts",
+  "src/cli/update-cli/update-command-config-fence.test.ts",
   "src/snapshot/git-backup.test.ts",
   "src/plugins/conversation-binding.test.ts",
   "src/plugins/conversation-binding.worker.test.ts",

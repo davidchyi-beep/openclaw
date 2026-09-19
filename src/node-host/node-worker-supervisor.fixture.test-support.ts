@@ -1,6 +1,22 @@
 import { expect, vi } from "vitest";
+import * as workerLaunchTransport from "./node-worker-launch-transport.js";
 import { createNodeWorkerSupervisor } from "./node-worker-supervisor.js";
 import { writeNodeWorkerFixture } from "./node-worker-supervisor.test-support.js";
+
+export function observeNodeWorkerAdapters(
+  observe: (adapter: workerLaunchTransport.NodeWorkerChildAdapter) => void,
+) {
+  const prepare = workerLaunchTransport.prepareNodeWorkerLaunchTransport;
+  return vi
+    .spyOn(workerLaunchTransport, "prepareNodeWorkerLaunchTransport")
+    .mockImplementation(async (options) => {
+      const transport = await prepare(options);
+      if (transport.kind === "started") {
+        observe(transport.adapter);
+      }
+      return transport;
+    });
+}
 
 export function createNodeWorkerSupervisorFixture(
   root: string,
