@@ -11,6 +11,7 @@ const WRITER_TURN_BUDGET_MS = 4;
 type StoreWriterTask = {
   /** Write operation to run once earlier tasks for the same store path finish. */
   fn: () => Promise<unknown>;
+  detach: () => void;
   /** Resolves the caller's promise with the write result. */
   resolve: (value: unknown) => void;
   /** Rejects the caller's promise with the write failure or test cleanup error. */
@@ -157,6 +158,7 @@ async function drainStoreWriterQueue(queues: StoreWriterQueues, storePath: strin
       if (!task) {
         continue;
       }
+      task.detach();
       await task.fn().then(task.resolve, task.reject);
     }
   } finally {
@@ -175,6 +177,8 @@ export async function runQueuedStoreWrite<T>(params: {
   fn: () => Promise<T>;
   reentrant?: boolean;
   timing?: StoreWriterTiming;
+  /** Cancellation applies only until this task enters its writer. */
+  signal?: AbortSignal;
 }): Promise<T> {
   if (!params.storePath || typeof params.storePath !== "string") {
     throw new Error(
@@ -183,6 +187,7 @@ export async function runQueuedStoreWrite<T>(params: {
       )}`,
     );
   }
+  params.signal?.throwIfAborted();
   // Explicit reentrancy keeps one logical read/decide/write section on the
   // active lane; ordinary async children must queue behind the current writer.
   if (params.reentrant === true && isActiveStoreWriter(params.queues, params.storePath)) {
@@ -203,7 +208,18 @@ export async function runQueuedStoreWrite<T>(params: {
   const runInAsyncContext = AsyncLocalStorage.snapshot();
   const queue = getOrCreateStoreWriterQueue(params.queues, params.storePath);
   return await new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      const index = queue.pending.indexOf(task);
+      if (index < 0) {
+        return;
+      }
+      queue.pending.splice(index, 1);
+      task.detach();
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Forward the caller's exact cancellation reason, including undefined.
+      reject(params.signal?.reason);
+    };
     const task: StoreWriterTask = {
+      detach: () => params.signal?.removeEventListener("abort", abort),
       fn: async () =>
         await runInAsyncContext(
           runActiveStoreWriter,
@@ -216,6 +232,10 @@ export async function runQueuedStoreWrite<T>(params: {
       reject,
     };
     queue.pending.push(task);
+    params.signal?.addEventListener("abort", abort, { once: true });
+    if (params.signal?.aborted) {
+      abort();
+    }
     void drainStoreWriterQueue(params.queues, params.storePath);
   });
 }
@@ -224,8 +244,10 @@ export async function runQueuedStoreWrite<T>(params: {
 export function clearStoreWriterQueuesForTest(queues: StoreWriterQueues, message: string): void {
   for (const queue of queues.values()) {
     for (const task of queue.pending) {
+      task.detach();
       task.reject(new Error(message));
     }
+    queue.pending.length = 0;
   }
   queues.clear();
 }
@@ -239,6 +261,7 @@ export async function drainStoreWriterQueuesForTest(
     const activeQueues = [...queues.values()];
     for (const queue of activeQueues) {
       for (const task of queue.pending) {
+        task.detach();
         task.reject(new Error(message));
       }
       queue.pending.length = 0;

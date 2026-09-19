@@ -1,5 +1,6 @@
 // Verifies queue ownership and reentrancy across separately loaded runtime chunks.
 import { AsyncLocalStorage } from "node:async_hooks";
+import { getEventListeners } from "node:events";
 import { performance } from "node:perf_hooks";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { importFreshModule } from "openclaw/plugin-sdk/test-fixtures";
@@ -7,6 +8,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import {
   runQueuedStoreWrite,
+  clearStoreWriterQueuesForTest,
+  drainStoreWriterQueuesForTest,
   type StoreWriterQueue,
   type StoreWriterTiming,
 } from "./store-writer-queue.js";
@@ -330,3 +333,154 @@ it("shares reentrant writer context across duplicate module instances", async ()
   expect(order).toEqual(["outer:start", "inner", "outer:end"]);
   expect(queues.size).toBe(0);
 });
+
+it("cancels only pending writers and detaches active writer abort listeners", async () => {
+  const queues = new Map<string, StoreWriterQueue>();
+  const gate = createDeferred();
+  const activeSignal = new AbortController();
+  const pendingSignal = new AbortController();
+  const order: string[] = [];
+  const write = (name: string, signal?: AbortSignal) =>
+    runQueuedStoreWrite({
+      queues,
+      storePath: "cancellable",
+      label: name,
+      signal,
+      fn: async () => {
+        order.push(name);
+        if (name === "active") {
+          await gate.promise;
+        }
+        return name;
+      },
+    });
+  const active = write("active", activeSignal.signal);
+  const pending = write("cancelled", pendingSignal.signal);
+  const following = write("following");
+  const failure = new Error("cancel pending only");
+  let cancelled = false;
+  const outcome = Promise.allSettled([pending]);
+  void pending.then(
+    () => {},
+    () => {
+      cancelled = true;
+    },
+  );
+  try {
+    expect(getEventListeners(activeSignal.signal, "abort")).toHaveLength(0);
+    pendingSignal.abort(failure);
+    activeSignal.abort(new Error("active must settle normally"));
+    await nextTurn();
+    expect(cancelled).toBe(true);
+    expect(await outcome).toEqual([{ status: "rejected", reason: failure }]);
+    expect(getEventListeners(pendingSignal.signal, "abort")).toHaveLength(0);
+    expect(order).toEqual(["active"]);
+    gate.resolve();
+    expect(await active).toBe("active");
+    expect(await following).toBe("following");
+    expect(order).toEqual(["active", "following"]);
+  } finally {
+    gate.resolve();
+    await Promise.allSettled([active, pending, following]);
+  }
+});
+
+it("keeps a ready writer cancellable while the shared turn budget yields to I/O", async () => {
+  const queues = new Map<string, StoreWriterQueue>();
+  const gate = createDeferred();
+  const signal = new AbortController();
+  const order: string[] = [];
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+  const active = runQueuedStoreWrite({
+    queues,
+    storePath: "cancel-during-yield",
+    label: "expensive writer",
+    fn: async () => {
+      order.push("active");
+      await gate.promise;
+      now = 10;
+      return "active";
+    },
+  });
+  const pending = runQueuedStoreWrite({
+    queues,
+    storePath: "cancel-during-yield",
+    label: "cancel during yield",
+    signal: signal.signal,
+    fn: async () => {
+      order.push("cancelled");
+    },
+  });
+  const following = runQueuedStoreWrite({
+    queues,
+    storePath: "cancel-during-yield",
+    label: "surviving follower",
+    fn: async () => {
+      order.push("following");
+      return "following";
+    },
+  });
+  const outcome = Promise.allSettled([pending]);
+  const failure = new Error("cancel while ready but yielding");
+  const ioProgress = nextTurn().then(async () => {
+    expect(await active).toBe("active");
+    expect(order).toEqual(["active"]);
+    expect(getEventListeners(signal.signal, "abort")).toHaveLength(1);
+    signal.abort(failure);
+    expect(getEventListeners(signal.signal, "abort")).toHaveLength(0);
+  });
+  gate.resolve();
+  try {
+    await ioProgress;
+    expect(await outcome).toEqual([{ status: "rejected", reason: failure }]);
+    expect(await following).toBe("following");
+    expect(order).toEqual(["active", "following"]);
+    expect(queues.size).toBe(0);
+  } finally {
+    gate.resolve();
+    await Promise.allSettled([active, pending, following, ioProgress]);
+    clock.mockRestore();
+  }
+});
+
+it.each(["clear", "drain"] as const)(
+  "never invokes rejected pending writers after %s cleanup settles",
+  async (mode) => {
+    const queues = new Map<string, StoreWriterQueue>();
+    const gate = createDeferred();
+    const signal = new AbortController();
+    const active = runQueuedStoreWrite({
+      queues,
+      storePath: "cleanup",
+      label: "active",
+      fn: () => gate.promise,
+    });
+    const pendingWriter = vi.fn(async () => undefined);
+    const pending = runQueuedStoreWrite({
+      queues,
+      storePath: "cleanup",
+      label: "pending",
+      signal: signal.signal,
+      fn: pendingWriter,
+    });
+    const activeDrain = queues.get("cleanup")?.drainPromise;
+    const rejected = expect(pending).rejects.toThrow("test cleanup");
+    const cleanup =
+      mode === "clear"
+        ? Promise.resolve(clearStoreWriterQueuesForTest(queues, "test cleanup"))
+        : drainStoreWriterQueuesForTest(queues, "test cleanup");
+    try {
+      expect(activeDrain).toBeInstanceOf(Promise);
+      await rejected;
+      expect(getEventListeners(signal.signal, "abort")).toHaveLength(0);
+      expect(pendingWriter).not.toHaveBeenCalled();
+      gate.resolve();
+      await Promise.all([active, activeDrain, cleanup]);
+      expect(pendingWriter).not.toHaveBeenCalled();
+    } finally {
+      gate.resolve();
+      await Promise.allSettled([active, pending, activeDrain, cleanup]);
+    }
+  },
+);
