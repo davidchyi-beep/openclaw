@@ -885,36 +885,8 @@ jobs:
             ls -la full-release-validation >&2 || true
             exit 1
           fi
-          RERUN_GROUP="$(jq -r '.rerunGroup // ""' "$MANIFEST_FILE")"
-          RUN_RELEASE_SOAK="$(jq -r '.runReleaseSoak // ""' "$MANIFEST_FILE")"
-          PERFORMANCE_BLOCKING="$(jq -r '.controls.performanceBlocking // false' "$MANIFEST_FILE")"
-          if [[ "$RERUN_GROUP" != "all" ]]; then
-            echo "Full release validation must run rerun_group=all before npm publish; got $RERUN_GROUP" >&2
-            exit 1
-          fi
-          if [[ "$PERFORMANCE_BLOCKING" != "true" && -n "${STABLE_SOAK_WAIVER//[[:space:]]/}" ]]; then
-            if ! jq -e '.childRuns.productPerformance.conclusion == "success"' "$MANIFEST_FILE" >/dev/null; then
-              echo "Waiving blocking product performance requires a successful product performance child run." >&2
-              exit 1
-            fi
-            echo "::warning::Blocking product performance waived by operator stable soak waiver; advisory performance child passed."
-            echo "stable_soak_waiver=$(jq -cn --arg reason "$STABLE_SOAK_WAIVER" '$reason')" >> "$GITHUB_OUTPUT"
-          elif [[ "$RELEASE_NPM_DIST_TAG" != "beta" && "$PERFORMANCE_BLOCKING" != "true" ]]; then
-            echo "Full release validation manifest does not record blocking product performance evidence." >&2
-            exit 1
-          fi
-          if [[ "$RELEASE_TAG" != *"-alpha."* && "$RELEASE_TAG" != *"-beta."* && "$RUN_RELEASE_SOAK" != "true" ]]; then
-            if [[ -z "${STABLE_SOAK_WAIVER//[[:space:]]/}" ]]; then
-              echo "Stable releases require Full Release Validation with runReleaseSoak=true." >&2
-              exit 1
-            fi
-            waiver_warning="${STABLE_SOAK_WAIVER//%/%25}"
-            waiver_warning="${waiver_warning//$'\r'/%0D}"
-            waiver_warning="${waiver_warning//$'\n'/%0A}"
-            echo "::warning::Stable soak waived by operator: ${waiver_warning}"
-            echo "stable_soak_waiver=$(jq -cn --arg reason "$STABLE_SOAK_WAIVER" '$reason')" >> "$GITHUB_OUTPUT"
-            printf '%s\n' "- Stable soak waived by operator: ${STABLE_SOAK_WAIVER}" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          node trusted-workflow/scripts/lib/release-publish-gates.mts \
+            --consumer core-npm --manifest "$MANIFEST_FILE"
 
       - name: Recheck npm release request
         env:

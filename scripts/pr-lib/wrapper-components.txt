@@ -966,6 +966,7 @@ src/plugins/runtime-degraded-state.ts
 src/plugins/runtime-state-key.ts
 src/plugins/runtime-state.ts
 src/plugins/runtime-workspace-state.ts
+src/plugins/runtime/execution-frame.ts
 src/plugins/runtime/gateway-request-scope.ts
 src/plugins/runtime/generation-scope.ts
 src/plugins/runtime/generation-state.ts

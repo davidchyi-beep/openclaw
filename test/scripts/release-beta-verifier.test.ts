@@ -24,6 +24,7 @@ import {
   validateClawHubBootstrapEvidence,
   verifyBetaRelease,
 } from "../../scripts/lib/release-beta-verifier.ts";
+import { verifyPreparedNpmRegistry } from "../../scripts/plugin-npm-prepared-release.mjs";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import { writePublishablePluginFixture } from "../helpers/publishable-plugin-fixture.js";
 import { createTempDirTracker } from "../helpers/temp-dir.js";
@@ -315,6 +316,73 @@ if (path.basename(process.argv[1]) === "npm" && args[0] === "view") {
       },
     );
   }
+
+  it.each(["missing", "conflicting", "exact"])(
+    "requires the parent's qualified plugin bytes when registry metadata is healthy: %s",
+    async (tarballState) => {
+      const name = "@openclaw/demo";
+      const fixture = workflowFixture({}, true, undefined, {
+        version,
+        distTag: "beta",
+        tags: { openclaw: { beta: version }, [name]: { beta: version } },
+      });
+      const bytes = Buffer.from("qualified plugin bytes");
+      const tarballPath = join(fixture.rootDir, "qualified.tgz");
+      writeFileSync(tarballPath, bytes);
+      let tarballReads = 0;
+      const options = {
+        rootDir: fixture.rootDir,
+        pluginNpmReadback: {
+          evidence: [],
+          verify: async (packageName: string) => {
+            await verifyPreparedNpmRegistry({
+              packageName,
+              version,
+              publishTags: ["beta"],
+              route: "npm-oidc",
+              tarballPath,
+              allowMissing: false,
+              fetchImpl: async (url: string) => {
+                if (url.endsWith(".tgz")) {
+                  tarballReads += 1;
+                  return tarballState === "missing"
+                    ? new Response(null, { status: 404 })
+                    : new Response(
+                        tarballState === "conflicting" ? Buffer.alloc(bytes.length) : bytes,
+                      );
+                }
+                return Response.json({
+                  name,
+                  "dist-tags": { beta: version },
+                  versions: {
+                    [version]: {
+                      name,
+                      version,
+                      dist: {
+                        integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
+                        shasum: createHash("sha1").update(bytes).digest("hex"),
+                        tarball: "https://registry.npmjs.org/@openclaw/demo/-/demo.tgz",
+                      },
+                    },
+                  },
+                });
+              },
+            });
+          },
+        },
+      };
+      const verification = verifyBetaRelease(fixture.args, options);
+      if (tarballState === "exact") {
+        await verification;
+      } else {
+        await expect(verification).rejects.toThrow(
+          tarballState === "missing" ? "HTTP 404" : "bytes differ",
+        );
+      }
+      expect(tarballReads).toBe(1);
+      expect(existsSync(join(fixture.rootDir, "evidence.json"))).toBe(tarballState === "exact");
+    },
+  );
 
   it.each(["E404", "ETARGET"])(
     "retains CLI diagnostics after core npm %s exhaustion without a success receipt",

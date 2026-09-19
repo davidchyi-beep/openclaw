@@ -478,53 +478,8 @@ jobs:
           TRUSTED_MAIN_REF="${trusted_main_ref}" \
             MANIFEST_FILE="$manifest" \
             node "$VALIDATOR_FILE" < "$RUN_JSON_FILE"
-          workflow_name="$(jq -r '.workflowName // ""' "$manifest")"
-          target_sha="$(jq -r '.targetSha // ""' "$manifest")"
-          release_profile="$(jq -r '.releaseProfile // ""' "$manifest")"
-          rerun_group="$(jq -r '.rerunGroup // ""' "$manifest")"
-          run_release_soak="$(jq -r '.runReleaseSoak // ""' "$manifest")"
-          performance_blocking="$(jq -r '.controls.performanceBlocking // false' "$manifest")"
-          if [[ "$workflow_name" != "Full Release Validation" ]]; then
-            echo "Full release validation manifest workflow mismatch: $workflow_name" >&2
-            exit 1
-          fi
-          if [[ "$target_sha" != "$EXPECTED_SHA" ]]; then
-            echo "Full release validation target SHA mismatch: expected $EXPECTED_SHA, got $target_sha" >&2
-            exit 1
-          fi
-          if [[ "$EXPECTED_RELEASE_PROFILE" != "from-validation" && "$release_profile" != "$EXPECTED_RELEASE_PROFILE" ]]; then
-            echo "Full release validation profile mismatch: expected $EXPECTED_RELEASE_PROFILE, got $release_profile" >&2
-            exit 1
-          fi
-          if [[ "$rerun_group" != "all" ]]; then
-            echo "Full release validation must run rerun_group=all before npm publish; got $rerun_group" >&2
-            exit 1
-          fi
-          if [[ "$performance_blocking" != "true" && -n "${STABLE_SOAK_WAIVER//[[:space:]]/}" ]]; then
-            if ! jq -e '.childRuns.productPerformance.conclusion == "success"' "$manifest" >/dev/null; then
-              echo "Waiving blocking product performance requires a successful product performance child run." >&2
-              exit 1
-            fi
-            echo "::warning::Blocking product performance waived by operator stable soak waiver; advisory performance child passed."
-            echo "stable_soak_waiver=$(jq -cn --arg reason "$STABLE_SOAK_WAIVER" '$reason')" >> "$GITHUB_OUTPUT"
-          elif [[ "$release_profile" != "beta" && "$performance_blocking" != "true" ]]; then
-            echo "Full release validation manifest does not record blocking product performance evidence." >&2
-            exit 1
-          fi
-          if [[ "$RELEASE_TAG" != *"-alpha."* && "$RELEASE_TAG" != *"-beta."* && "$run_release_soak" != "true" ]]; then
-            if [[ -z "${STABLE_SOAK_WAIVER//[[:space:]]/}" ]]; then
-              echo "Stable releases require Full Release Validation with runReleaseSoak=true." >&2
-              exit 1
-            fi
-            waiver_warning="${STABLE_SOAK_WAIVER//%/%25}"
-            waiver_warning="${waiver_warning//$'\r'/%0D}"
-            waiver_warning="${waiver_warning//$'\n'/%0A}"
-            echo "::warning::Stable soak waived by operator: ${waiver_warning}"
-            echo "stable_soak_waiver=$(jq -cn --arg reason "$STABLE_SOAK_WAIVER" '$reason')" >> "$GITHUB_OUTPUT"
-            printf '%s\n' "- Stable soak waived by operator: ${STABLE_SOAK_WAIVER}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "release_profile=$release_profile" >> "$GITHUB_OUTPUT"
-          echo "coverage_policy=$(jq -r '.validationInputs.coveragePolicy // ""' "$manifest")" >> "$GITHUB_OUTPUT"
+          node "${GITHUB_WORKSPACE}/.release-validation-tooling/scripts/lib/release-publish-gates.mts" \
+            --consumer publisher --manifest "$manifest"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           import { preparedDockerEvidenceFromFullRelease } from './.release-validation-tooling/scripts/docker-release-artifacts.mjs';
@@ -1648,6 +1603,7 @@ jobs:
           fi
 
           npm_args=(-f publish_scope="${PLUGIN_PUBLISH_SCOPE}" -f ref="${TARGET_SHA}" -f release_publish_run_id="${GITHUB_RUN_ID}" -f release_publish_run_attempt="${GITHUB_RUN_ATTEMPT}" -f release_publish_branch="${PARENT_WORKFLOW_BRANCH}" -f release_publish_full_ref="${PARENT_WORKFLOW_FULL_REF}")
+          npm_args+=(-f defer_registry_verification="${PUBLISH_OPENCLAW_NPM}")
           if [[ -n "${PREPARED_PLUGINS}" ]]; then
             npm_args+=(-f prepared_artifact="$(jq -cer '.npm' <<< "$PREPARED_PLUGINS")")
           fi

@@ -963,6 +963,7 @@ enum class GatewayMethod(
   EnvironmentsSessionExec("environments.session.exec"),
   SessionsSetInvolvement("sessions.setInvolvement"),
   TranscriptsSummarize("transcripts.summarize"),
+  ControlUiLinkPreview("controlUi.linkPreview"),
 }
 
 enum class GatewayEvent(
